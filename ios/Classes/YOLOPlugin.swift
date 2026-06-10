@@ -35,7 +35,11 @@ public final class YOLOPlugin: NSObject, @preconcurrency FlutterPlugin, @uncheck
     let factory = SwiftYOLOPlatformViewFactory(messenger: registrar.messenger())
     registrar.register(factory, withId: "com.ultralytics.yolo/YOLOPlatformView")
 
-    // 2) Register the default method channel for backward compatibility
+    // 2) Register the multi-task platform view
+    let multiTaskFactory = SwiftYOLOMultiTaskPlatformViewFactory(messenger: registrar.messenger())
+    registrar.register(multiTaskFactory, withId: "com.ultralytics.yolo/YOLOMultiTaskPlatformView")
+
+    // 3) Register the default method channel for backward compatibility
     let defaultChannel = FlutterMethodChannel(
       name: "yolo_single_image_channel",
       binaryMessenger: registrar.messenger()

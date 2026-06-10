@@ -4,6 +4,7 @@ export 'core/yolo_model_manager.dart' show DownloadProgress;
 export 'models/yolo_exceptions.dart';
 export 'models/yolo_result.dart';
 export 'models/yolo_task.dart';
+export 'multi_task_yolo_view.dart';
 export 'yolo.dart';
 export 'yolo_instance_manager.dart';
 export 'yolo_performance_metrics.dart';
