@@ -58,7 +58,7 @@ class _FocusReticleState extends State<FocusReticle> {
           duration: Duration(milliseconds: _opacity == 1 ? 100 : 300),
           child: Image.asset(
             'assets/focus_reticle.png',
-            package: 'ultralytics_yolo',
+            package: 'aicycle_yolo',
             fit: BoxFit.contain,
           ),
         ),

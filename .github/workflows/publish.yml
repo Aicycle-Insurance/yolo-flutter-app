@@ -1,6 +1,6 @@
 # Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
 
-# Publish package to pub.dev https://pub.dev/packages/ultralytics_yolo
+# Publish package to pub.dev https://pub.dev/packages/aicycle_yolo
 
 name: Publish to pub.dev
 
@@ -88,7 +88,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: # for GitHub Deployments tab
       name: Release - pub.dev
-      url: https://pub.dev/packages/ultralytics_yolo
+      url: https://pub.dev/packages/aicycle_yolo
     permissions:
       id-token: write # for pub.dev trusted publishing
     steps:
@@ -127,7 +127,7 @@ jobs:
           webhook-type: incoming-webhook
           webhook: ${{ secrets.SLACK_WEBHOOK_URL_HUBWEB }}
           payload: |
-            text: "<!channel> GitHub Actions success for ${{ github.workflow }} ✅\n\n\n*Repository:* https://github.com/${{ github.repository }}\n*Action:* https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}\n*Author:* ${{ github.actor }}\n*Event:* NEW `ultralytics_yolo ${{ needs.check.outputs.current_tag }}` version bump merged; pub.dev publish runs from the tag workflow 🎉\n*Job Status:* ${{ job.status }}\n*Pull Request:* <https://github.com/${{ github.repository }}/pull/${{ env.PR_NUMBER }}> ${{ env.PR_TITLE }}\n"
+            text: "<!channel> GitHub Actions success for ${{ github.workflow }} ✅\n\n\n*Repository:* https://github.com/${{ github.repository }}\n*Action:* https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}\n*Author:* ${{ github.actor }}\n*Event:* NEW `aicycle_yolo ${{ needs.check.outputs.current_tag }}` version bump merged; pub.dev publish runs from the tag workflow 🎉\n*Job Status:* ${{ job.status }}\n*Pull Request:* <https://github.com/${{ github.repository }}/pull/${{ env.PR_NUMBER }}> ${{ env.PR_TITLE }}\n"
       - name: Notify Failure
         if: needs.build.result != 'success'
         uses: slackapi/slack-github-action@v3.0.3

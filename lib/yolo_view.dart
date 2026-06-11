@@ -4,15 +4,15 @@ import 'dart:async';
 import 'package:flutter/foundation.dart' show defaultTargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:ultralytics_yolo/core/yolo_model_resolver.dart';
-import 'package:ultralytics_yolo/utils/logger.dart';
-import 'package:ultralytics_yolo/models/yolo_result.dart';
-import 'package:ultralytics_yolo/models/yolo_task.dart';
-import 'package:ultralytics_yolo/yolo_streaming_config.dart';
-import 'package:ultralytics_yolo/yolo_performance_metrics.dart';
-import 'package:ultralytics_yolo/utils/map_converter.dart';
-import 'package:ultralytics_yolo/config/channel_config.dart';
-import 'package:ultralytics_yolo/widgets/yolo_controller.dart';
+import 'package:aicycle_yolo/core/yolo_model_resolver.dart';
+import 'package:aicycle_yolo/utils/logger.dart';
+import 'package:aicycle_yolo/models/yolo_result.dart';
+import 'package:aicycle_yolo/models/yolo_task.dart';
+import 'package:aicycle_yolo/yolo_streaming_config.dart';
+import 'package:aicycle_yolo/yolo_performance_metrics.dart';
+import 'package:aicycle_yolo/utils/map_converter.dart';
+import 'package:aicycle_yolo/config/channel_config.dart';
+import 'package:aicycle_yolo/widgets/yolo_controller.dart';
 
 /// Enum for camera lens selection.
 enum LensFacing {
@@ -299,7 +299,7 @@ class _YOLOViewState extends State<YOLOView> {
         FlutterError.reportError(
           FlutterErrorDetails(
             exception: error,
-            library: 'ultralytics_yolo',
+            library: 'aicycle_yolo',
             context: ErrorDescription('switching model to $modelPath'),
           ),
         );

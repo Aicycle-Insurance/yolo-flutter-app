@@ -2,7 +2,7 @@
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import 'package:ultralytics_yolo/widgets/yolo_controller.dart';
+import 'package:aicycle_yolo/widgets/yolo_controller.dart';
 
 /// Lens picker mirroring `yolo-ios-app/Sources/UltralyticsYOLO/YOLOView.swift#setupLensControl`.
 ///

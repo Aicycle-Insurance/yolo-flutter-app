@@ -5,7 +5,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:package_info_plus/package_info_plus.dart';
-import 'package:ultralytics_yolo/ultralytics_yolo.dart';
+import 'package:aicycle_yolo/ultralytics_yolo.dart';
 
 /// Mirrors the iOS `YOLOSingleImageUIKit` example: pick a gallery image, run `yolo26n` detection, and list the
 /// resulting labels + confidences over the annotated image returned by the native side. Stamps the live app version

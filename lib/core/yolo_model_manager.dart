@@ -3,11 +3,11 @@
 import 'dart:async';
 
 import 'package:flutter/services.dart';
-import 'package:ultralytics_yolo/models/yolo_task.dart';
-import 'package:ultralytics_yolo/models/yolo_exceptions.dart';
-import 'package:ultralytics_yolo/utils/error_handler.dart';
-import 'package:ultralytics_yolo/utils/logger.dart';
-import 'package:ultralytics_yolo/config/channel_config.dart';
+import 'package:aicycle_yolo/models/yolo_task.dart';
+import 'package:aicycle_yolo/models/yolo_exceptions.dart';
+import 'package:aicycle_yolo/utils/error_handler.dart';
+import 'package:aicycle_yolo/utils/logger.dart';
+import 'package:aicycle_yolo/config/channel_config.dart';
 
 /// Progress snapshot for an in-flight model download.
 class DownloadProgress {

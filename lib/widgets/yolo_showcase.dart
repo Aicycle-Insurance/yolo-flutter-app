@@ -6,21 +6,21 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:ultralytics_yolo/core/yolo_model_manager.dart';
-import 'package:ultralytics_yolo/core/yolo_model_resolver.dart';
-import 'package:ultralytics_yolo/widgets/camera_toolbar.dart';
-import 'package:ultralytics_yolo/widgets/focus_reticle.dart';
-import 'package:ultralytics_yolo/widgets/lens_picker.dart';
-import 'package:ultralytics_yolo/widgets/logo_overlay.dart';
-import 'package:ultralytics_yolo/widgets/model_size_segmented_control.dart';
-import 'package:ultralytics_yolo/widgets/performance_label.dart';
-import 'package:ultralytics_yolo/widgets/task_segmented_control.dart';
-import 'package:ultralytics_yolo/widgets/threshold_slider_row.dart';
-import 'package:ultralytics_yolo/widgets/yolo_controller.dart';
-import 'package:ultralytics_yolo/widgets/zoom_indicator.dart';
-import 'package:ultralytics_yolo/yolo.dart';
-import 'package:ultralytics_yolo/yolo_performance_metrics.dart';
-import 'package:ultralytics_yolo/yolo_view.dart';
+import 'package:aicycle_yolo/core/yolo_model_manager.dart';
+import 'package:aicycle_yolo/core/yolo_model_resolver.dart';
+import 'package:aicycle_yolo/widgets/camera_toolbar.dart';
+import 'package:aicycle_yolo/widgets/focus_reticle.dart';
+import 'package:aicycle_yolo/widgets/lens_picker.dart';
+import 'package:aicycle_yolo/widgets/logo_overlay.dart';
+import 'package:aicycle_yolo/widgets/model_size_segmented_control.dart';
+import 'package:aicycle_yolo/widgets/performance_label.dart';
+import 'package:aicycle_yolo/widgets/task_segmented_control.dart';
+import 'package:aicycle_yolo/widgets/threshold_slider_row.dart';
+import 'package:aicycle_yolo/widgets/yolo_controller.dart';
+import 'package:aicycle_yolo/widgets/zoom_indicator.dart';
+import 'package:aicycle_yolo/yolo.dart';
+import 'package:aicycle_yolo/yolo_performance_metrics.dart';
+import 'package:aicycle_yolo/yolo_view.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
@@ -65,7 +65,7 @@ class YOLOShowcase extends StatefulWidget {
 }
 
 class _YOLOShowcaseState extends State<YOLOShowcase> {
-  static const _prefsTaskKey = 'ultralytics_yolo.showcase.task';
+  static const _prefsTaskKey = 'aicycle_yolo.showcase.task';
 
   late YOLOViewController _controller;
   bool _ownsController = false;

@@ -1,10 +1,10 @@
 // Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
 
 import 'package:flutter/services.dart';
-import 'package:ultralytics_yolo/models/yolo_task.dart';
-import 'package:ultralytics_yolo/models/yolo_exceptions.dart';
-import 'package:ultralytics_yolo/utils/error_handler.dart';
-import 'package:ultralytics_yolo/utils/map_converter.dart';
+import 'package:aicycle_yolo/models/yolo_task.dart';
+import 'package:aicycle_yolo/models/yolo_exceptions.dart';
+import 'package:aicycle_yolo/utils/error_handler.dart';
+import 'package:aicycle_yolo/utils/map_converter.dart';
 
 /// Inference functionality for YOLO models
 class YOLOInference {

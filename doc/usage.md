@@ -14,7 +14,7 @@ Use `YOLO` when you already have image bytes:
 
 ```dart
 import 'dart:io';
-import 'package:ultralytics_yolo/ultralytics_yolo.dart';
+import 'package:aicycle_yolo/aicycle_yolo.dart';
 
 class ObjectDetector {
   late final YOLO yolo;

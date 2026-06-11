@@ -29,13 +29,13 @@ cd yolo_demo
 
 Add to `pubspec.yaml`:
 
-Package: https://pub.dev/packages/ultralytics_yolo
+Package: https://pub.dev/packages/aicycle_yolo
 
 ```yaml
 dependencies:
   flutter:
     sdk: flutter
-  ultralytics_yolo: ^0.5.1
+  aicycle_yolo: ^0.5.1
   image_picker: ^1.2.1 # For image selection
 ```
 
@@ -73,7 +73,7 @@ Replace `lib/main.dart` with this complete working example:
 
 ```dart
 import 'package:flutter/material.dart';
-import 'package:ultralytics_yolo/ultralytics_yolo.dart';
+import 'package:aicycle_yolo/aicycle_yolo.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 
@@ -204,7 +204,7 @@ You now have a working YOLO object detection app! The app will:
 Want real-time detection? Add the YOLOView widget:
 
 ```dart
-import 'package:ultralytics_yolo/ultralytics_yolo.dart';
+import 'package:aicycle_yolo/aicycle_yolo.dart';
 
 // Replace the Column with:
 YOLOView(

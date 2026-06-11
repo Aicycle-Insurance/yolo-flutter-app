@@ -5,12 +5,12 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:ultralytics_yolo/widgets/camera_toolbar.dart';
-import 'package:ultralytics_yolo/widgets/lens_picker.dart';
-import 'package:ultralytics_yolo/widgets/yolo_controller.dart';
-import 'package:ultralytics_yolo/widgets/yolo_showcase.dart';
-import 'package:ultralytics_yolo/yolo.dart';
-import 'package:ultralytics_yolo/yolo_view.dart';
+import 'package:aicycle_yolo/widgets/camera_toolbar.dart';
+import 'package:aicycle_yolo/widgets/lens_picker.dart';
+import 'package:aicycle_yolo/widgets/yolo_controller.dart';
+import 'package:aicycle_yolo/widgets/yolo_showcase.dart';
+import 'package:aicycle_yolo/yolo.dart';
+import 'package:aicycle_yolo/yolo_view.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

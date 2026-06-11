@@ -4,7 +4,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:ultralytics_yolo/ultralytics_yolo.dart';
+import 'package:aicycle_yolo/ultralytics_yolo.dart';
 
 /// Multi-task inference screen — detect, segment, and classify run simultaneously
 /// on a single camera stream using one native [MultiTaskYOLOView].

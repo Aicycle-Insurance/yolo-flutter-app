@@ -6,11 +6,11 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:ultralytics_yolo/config/channel_config.dart';
-import 'package:ultralytics_yolo/core/yolo_model_manager.dart';
-import 'package:ultralytics_yolo/models/yolo_exceptions.dart';
-import 'package:ultralytics_yolo/models/yolo_task.dart';
-import 'package:ultralytics_yolo/utils/mini_zip.dart';
+import 'package:aicycle_yolo/config/channel_config.dart';
+import 'package:aicycle_yolo/core/yolo_model_manager.dart';
+import 'package:aicycle_yolo/models/yolo_exceptions.dart';
+import 'package:aicycle_yolo/models/yolo_task.dart';
+import 'package:aicycle_yolo/utils/mini_zip.dart';
 
 class _OfficialModelArtifact {
   const _OfficialModelArtifact({

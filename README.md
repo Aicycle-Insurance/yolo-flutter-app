@@ -58,11 +58,11 @@ The main goal is simple integration: use an official model ID, or drop in your o
 
 Install the package:
 
-Package: https://pub.dev/packages/ultralytics_yolo
+Package: https://pub.dev/packages/aicycle_yolo
 
 ```yaml
 dependencies:
-  ultralytics_yolo: ^0.6.2
+  aicycle_yolo: ^0.6.2
 ```
 
 ```bash
@@ -72,7 +72,7 @@ flutter pub get
 Start with the default official model:
 
 ```dart
-import 'package:ultralytics_yolo/ultralytics_yolo.dart';
+import 'package:aicycle_yolo/aicycle_yolo.dart';
 
 final modelId = YOLO.defaultOfficialModel() ?? 'yolo26n';
 

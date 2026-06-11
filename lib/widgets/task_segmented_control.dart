@@ -2,7 +2,7 @@
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import 'package:ultralytics_yolo/models/yolo_task.dart';
+import 'package:aicycle_yolo/models/yolo_task.dart';
 
 /// Picks the active [YOLOTask] using a `CupertinoSlidingSegmentedControl` styled to match
 /// `yolo-ios-app/Sources/UltralyticsYOLO/YOLOView.swift`'s storyboard-driven `UISegmentedControl` (`Det Seg Sem Cls Pose OBB`).
