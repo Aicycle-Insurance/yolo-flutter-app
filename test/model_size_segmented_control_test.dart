@@ -2,7 +2,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:ultralytics_yolo/widgets/model_size_segmented_control.dart';
+import 'package:aicycle_yolo/widgets/model_size_segmented_control.dart';
 
 void main() {
   // CupertinoSlidingSegmentedControl asserts >= 2 segments; hosts can expose only one size, which previously threw a

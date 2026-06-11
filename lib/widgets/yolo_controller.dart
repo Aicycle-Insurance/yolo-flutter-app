@@ -3,10 +3,10 @@
 import 'dart:async';
 
 import 'package:flutter/services.dart';
-import 'package:ultralytics_yolo/core/yolo_model_resolver.dart';
-import 'package:ultralytics_yolo/models/yolo_task.dart';
-import 'package:ultralytics_yolo/utils/logger.dart';
-import 'package:ultralytics_yolo/yolo_streaming_config.dart';
+import 'package:aicycle_yolo/core/yolo_model_resolver.dart';
+import 'package:aicycle_yolo/models/yolo_task.dart';
+import 'package:aicycle_yolo/utils/logger.dart';
+import 'package:aicycle_yolo/yolo_streaming_config.dart';
 
 /// Describes a discoverable camera lens (e.g. ultra-wide, wide, telephoto).
 class LensInfo {

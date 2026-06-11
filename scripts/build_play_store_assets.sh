@@ -166,7 +166,7 @@ extract_changelog_notes() {
     -e 's/[[:space:]]+/ /g'
 }
 
-echo "build_play_store_assets: building ultralytics_yolo $VERSION_NAME+$VERSION_CODE"
+echo "build_play_store_assets: building aicycle_yolo $VERSION_NAME+$VERSION_CODE"
 
 (cd "$REPO_ROOT" && flutter pub get)
 (cd "$EXAMPLE_DIR" && flutter pub get)

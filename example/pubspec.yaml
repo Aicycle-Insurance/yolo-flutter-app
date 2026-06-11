@@ -1,7 +1,7 @@
 # Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
 
-name: ultralytics_yolo_example
-description: "Demonstrates how to use the ultralytics_yolo plugin."
+name: aicycle_yolo_example
+description: "Demonstrates how to use the aicycle_yolo plugin."
 publish_to: "none"
 version: 0.6.4+10
 
@@ -20,7 +20,7 @@ dependencies:
   # Xcode 26.5 ("'Flutter/Flutter.h' file not found", "double-quoted include in framework header"). Revisit once the
   # upstream package re-publishes with a compatible module map.
   share_plus: ^12.0.0
-  ultralytics_yolo:
+  aicycle_yolo:
     path: ../
 
 dev_dependencies:

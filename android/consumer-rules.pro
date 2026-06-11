@@ -1,4 +1,4 @@
-# Consumer ProGuard/R8 rules shipped with the ultralytics_yolo plugin. Applied automatically to any release build of an
+# Consumer ProGuard/R8 rules shipped with the aicycle_yolo plugin. Applied automatically to any release build of an
 # app that depends on the plugin, so they don't have to know about these internals.
 
 # LiteRT 2.x ("LiteRT Next"): CompiledModel / Accelerator / TensorBuffer / Environment are invoked from the native

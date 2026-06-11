@@ -1,6 +1,6 @@
 PODS:
   - Flutter (1.0.0)
-  - ultralytics_yolo (0.6.0):
+  - aicycle_yolo (0.6.0):
     - Flutter
     - UltralyticsYOLO (< 9.0, >= 8.9.5)
   - UltralyticsYOLO (8.9.7)
@@ -11,7 +11,7 @@ PODS:
 
 DEPENDENCIES:
   - Flutter (from `Flutter`)
-  - ultralytics_yolo (from `.symlinks/plugins/ultralytics_yolo/ios`)
+  - aicycle_yolo (from `.symlinks/plugins/aicycle_yolo/ios`)
 
 SPEC REPOS:
   trunk:
@@ -20,8 +20,8 @@ SPEC REPOS:
 EXTERNAL SOURCES:
   Flutter:
     :path: Flutter
-  ultralytics_yolo:
-    :path: ".symlinks/plugins/ultralytics_yolo/ios"
+  aicycle_yolo:
+    :path: ".symlinks/plugins/aicycle_yolo/ios"
 
 SPEC CHECKSUMS:
   Flutter: cabc95a1d2626b1b06e7179b784ebcf0c0cde467
@@ -30,7 +30,7 @@ SPEC CHECKSUMS:
   package_info_plus: af8e2ca6888548050f16fa2f1938db7b5a5df499
   share_plus: 50da8cb520a8f0f65671c6c6a99b3617ed10a58a
   shared_preferences_foundation: 7036424c3d8ec98dfe75ff1667cb0cd531ec82bb
-  ultralytics_yolo: 3bab5f36454be0b835aaef0b4445126088e0bdcf
+  aicycle_yolo: 3bab5f36454be0b835aaef0b4445126088e0bdcf
   UltralyticsYOLO: c0ccbac7cfe65b41f5012f8fe81a4e21cc0d63d0
   url_launcher_ios: 7a95fa5b60cc718a708b8f2966718e93db0cef1b
   wakelock_plus: e29112ab3ef0b318e58cfa5c32326458be66b556

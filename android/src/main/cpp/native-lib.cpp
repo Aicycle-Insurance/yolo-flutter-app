@@ -95,7 +95,7 @@ static void nms_sorted_bboxes(const std::vector<DetectedObject>& objects, std::v
 
 extern "C"
 JNIEXPORT jobjectArray JNICALL
-Java_com_ultralytics_yolo_ObjectDetector_postprocess(
+Java_com_aicycle_yolo_ObjectDetector_postprocess(
         JNIEnv *env,
         jobject thiz,
         jfloatArray recognitions,

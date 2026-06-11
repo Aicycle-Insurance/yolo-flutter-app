@@ -15,8 +15,8 @@ class LogoOverlay extends StatelessWidget {
     return Opacity(
       opacity: 0.9,
       child: Image.asset(
-        'assets/ultralytics_yolo_logotype.png',
-        package: 'ultralytics_yolo',
+        'assets/aicycle_yolo_logotype.png',
+        package: 'aicycle_yolo',
         width: width,
       ),
     );

@@ -11,7 +11,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 
-import 'package:ultralytics_yolo/yolo.dart';
+import 'package:aicycle_yolo/yolo.dart';
 
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();

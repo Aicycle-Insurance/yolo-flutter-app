@@ -1,9 +1,9 @@
 #
 # To learn more about a Podspec see https://guides.cocoapods.org/syntax/podspec.html.
-# Run `pod lib lint ultralytics_yolo.podspec` to validate before publishing.
+# Run `pod lib lint aicycle_yolo.podspec` to validate before publishing.
 #
 Pod::Spec.new do |s|
-  s.name             = 'ultralytics_yolo'
+  s.name             = 'aicycle_yolo'
   s.version          = '0.6.0'
   s.summary          = 'Flutter plugin for YOLO (You Only Look Once) models'
   s.description      = <<-DESC
@@ -28,5 +28,5 @@ Flutter plugin for YOLO (You Only Look Once) models, supporting object detection
   # required reason APIs, update the PrivacyInfo.xcprivacy file to describe your
   # plugin's privacy impact, and then uncomment this line. For more information,
   # see https://developer.apple.com/documentation/bundleresources/privacy-manifest-files
-  s.resource_bundles = {'ultralytics_yolo_privacy' => ['Resources/PrivacyInfo.xcprivacy']}
+  s.resource_bundles = {'aicycle_yolo_privacy' => ['Resources/PrivacyInfo.xcprivacy']}
 end

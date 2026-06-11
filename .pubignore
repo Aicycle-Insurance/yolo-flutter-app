@@ -16,7 +16,7 @@ example/lib/widget_previews.dart
 **/android/.gradle
 **/android/captures/
 # Tracked symlink for local plugin development; pub follows it and duplicates the plugin under example/android.
-example/android/ultralytics_yolo_plugin
+example/android/aicycle_yolo_plugin
 
 # Generated files
 coverage/

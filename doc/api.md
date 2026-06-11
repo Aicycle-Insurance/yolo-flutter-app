@@ -618,7 +618,7 @@ YOLOShowcase(
 Import once and get the full UI:
 
 ```dart
-import 'package:ultralytics_yolo/ultralytics_yolo.dart';
+import 'package:aicycle_yolo/aicycle_yolo.dart';
 
 YOLOShowcase()
 ```
@@ -629,7 +629,7 @@ For a custom layout, compose the 9 exported Material widgets around a bare `YOLO
 
 ### YOLOModelManager Class
 
-Static class that manages model downloads and caching. The umbrella library re-exports only the `DownloadProgress` type; to reference `YOLOModelManager` itself, import `package:ultralytics_yolo/core/yolo_model_manager.dart`.
+Static class that manages model downloads and caching. The umbrella library re-exports only the `DownloadProgress` type; to reference `YOLOModelManager` itself, import `package:aicycle_yolo/core/yolo_model_manager.dart`.
 
 #### Static Properties
 

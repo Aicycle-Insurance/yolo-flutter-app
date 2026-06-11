@@ -13,7 +13,7 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
-import 'package:ultralytics_yolo/ultralytics_yolo.dart';
+import 'package:aicycle_yolo/ultralytics_yolo.dart';
 
 Future<Uint8List> _download(String url) async {
   final client = HttpClient();

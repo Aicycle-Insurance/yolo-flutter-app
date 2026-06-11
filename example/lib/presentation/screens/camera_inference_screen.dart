@@ -7,7 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
-import 'package:ultralytics_yolo/ultralytics_yolo.dart';
+import 'package:aicycle_yolo/ultralytics_yolo.dart';
 
 /// Real-time YOLO camera inference. Thin shell over [YOLOShowcase] that wires the capture callback to the platform
 /// share sheet via `share_plus` and stamps the live app version in the bottom-left (matching `yolo-ios-app`). Kept

@@ -3,12 +3,12 @@
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/material.dart';
-import 'package:ultralytics_yolo/yolo_view.dart';
-import 'package:ultralytics_yolo/widgets/yolo_controller.dart';
-import 'package:ultralytics_yolo/models/yolo_task.dart';
-import 'package:ultralytics_yolo/models/yolo_result.dart';
-import 'package:ultralytics_yolo/yolo_performance_metrics.dart';
-import 'package:ultralytics_yolo/yolo_streaming_config.dart';
+import 'package:aicycle_yolo/yolo_view.dart';
+import 'package:aicycle_yolo/widgets/yolo_controller.dart';
+import 'package:aicycle_yolo/models/yolo_task.dart';
+import 'package:aicycle_yolo/models/yolo_result.dart';
+import 'package:aicycle_yolo/yolo_performance_metrics.dart';
+import 'package:aicycle_yolo/yolo_streaming_config.dart';
 import 'package:flutter/foundation.dart';
 import 'utils/test_helpers.dart';
 

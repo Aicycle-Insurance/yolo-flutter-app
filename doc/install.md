@@ -12,13 +12,13 @@ Get the Ultralytics YOLO Flutter plugin up and running in your project with this
 
 Add the plugin to your Flutter project's `pubspec.yaml`:
 
-Package: https://pub.dev/packages/ultralytics_yolo
+Package: https://pub.dev/packages/aicycle_yolo
 
 ```yaml
 dependencies:
   flutter:
     sdk: flutter
-  ultralytics_yolo: ^0.5.1 # Latest version
+  aicycle_yolo: ^0.5.1 # Latest version
 ```
 
 Run the installation command:
@@ -135,7 +135,7 @@ Create a simple test to verify everything works:
 ```dart
 // lib/test_yolo.dart
 import 'package:flutter/material.dart';
-import 'package:ultralytics_yolo/ultralytics_yolo.dart';
+import 'package:aicycle_yolo/aicycle_yolo.dart';
 
 class TestYOLO extends StatelessWidget {
   @override

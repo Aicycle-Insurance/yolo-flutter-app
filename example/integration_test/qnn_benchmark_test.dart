@@ -15,7 +15,7 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
-import 'package:ultralytics_yolo/ultralytics_yolo.dart';
+import 'package:aicycle_yolo/ultralytics_yolo.dart';
 
 const String _releaseBase =
     'https://github.com/ultralytics/yolo-flutter-app/releases/download/v0.3.5';

@@ -2,8 +2,8 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:ultralytics_yolo/models/yolo_task.dart';
-import 'package:ultralytics_yolo/widgets/task_segmented_control.dart';
+import 'package:aicycle_yolo/models/yolo_task.dart';
+import 'package:aicycle_yolo/widgets/task_segmented_control.dart';
 
 void main() {
   // On narrow screens the six task segments (Det/Seg/Sem/Cls/Pose/OBB) can exceed the available width, which made

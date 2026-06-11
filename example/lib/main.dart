@@ -2,10 +2,9 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:ultralytics_yolo_example/presentation/screens/camera_inference_screen.dart';
-import 'package:ultralytics_yolo_example/presentation/screens/multi_task_screen.dart'
-    show MultiTaskScreen;
-import 'package:ultralytics_yolo_example/presentation/screens/single_image_screen.dart';
+import 'presentation/screens/camera_inference_screen.dart';
+import 'presentation/screens/multi_task_screen.dart' show MultiTaskScreen;
+import 'presentation/screens/single_image_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();

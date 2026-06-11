@@ -2,9 +2,9 @@
 
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:ultralytics_yolo/core/yolo_model_manager.dart';
-import 'package:ultralytics_yolo/models/yolo_task.dart';
-import 'package:ultralytics_yolo/models/yolo_exceptions.dart';
+import 'package:aicycle_yolo/core/yolo_model_manager.dart';
+import 'package:aicycle_yolo/models/yolo_task.dart';
+import 'package:aicycle_yolo/models/yolo_exceptions.dart';
 import 'utils/test_helpers.dart';
 
 void main() {
