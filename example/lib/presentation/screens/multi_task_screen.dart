@@ -2,6 +2,7 @@
 
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:ultralytics_yolo/ultralytics_yolo.dart';
 
@@ -17,6 +18,8 @@ class MultiTaskScreen extends StatefulWidget {
 }
 
 class _MultiTaskScreenState extends State<MultiTaskScreen> {
+  final _controller = MultiTaskYOLOController();
+
   // Per-task latest results
   List<Map<String, dynamic>> _detections = [];
   Map<String, dynamic>? _classification;
@@ -25,6 +28,28 @@ class _MultiTaskScreenState extends State<MultiTaskScreen> {
   double _detectMs = 0, _detectFps = 0;
   double _classifyMs = 0, _classifyFps = 0;
   double _cameraFps = 0;
+
+  bool _capturing = false;
+
+  Future<void> _capturePhoto() async {
+    if (_capturing) return;
+    setState(() => _capturing = true);
+    try {
+      final bytes = await _controller.capturePhoto();
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (context) => _PhotoPreviewDialog(bytes: bytes),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Capture failed: $e')));
+    } finally {
+      if (mounted) setState(() => _capturing = false);
+    }
+  }
 
   void _onStreamingData(Map<String, dynamic> data) {
     if (!mounted) return;
@@ -71,6 +96,7 @@ class _MultiTaskScreenState extends State<MultiTaskScreen> {
             classifyModelPath: Platform.isAndroid
                 ? 'assets/models/car_corner_classification_yolo26n-cls_int8.tflite'
                 : 'assets/models/car_corner_classification.mlpackage.zip',
+            controller: _controller,
             onStreamingData: _onStreamingData,
           ),
 
@@ -108,6 +134,83 @@ class _MultiTaskScreenState extends State<MultiTaskScreen> {
             child: _ResultsPanel(
               detections: _detections,
               classification: _classification,
+            ),
+          ),
+
+          // Shutter button (above the results panel)
+          Align(
+            alignment: Alignment.bottomCenter,
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: 146),
+              child: GestureDetector(
+                onTap: _capturePhoto,
+                child: Container(
+                  width: 64,
+                  height: 64,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Colors.white.withValues(alpha: 0.25),
+                    border: Border.all(color: Colors.white, width: 3),
+                  ),
+                  child: _capturing
+                      ? const Padding(
+                          padding: EdgeInsets.all(18),
+                          child: CircularProgressIndicator(
+                            color: Colors.white,
+                            strokeWidth: 2.5,
+                          ),
+                        )
+                      : const Icon(
+                          Icons.camera_alt,
+                          color: Colors.white,
+                          size: 28,
+                        ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// MARK: - Photo preview
+
+/// Shows the captured JPEG with [Image.memory] — which ignores EXIF rotation,
+/// so the image only displays upright because the native layer normalizes
+/// the pixel data before returning it. The photo is landscape (wide) by design.
+class _PhotoPreviewDialog extends StatelessWidget {
+  const _PhotoPreviewDialog({required this.bytes});
+
+  final Uint8List bytes;
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: Colors.black,
+      insetPadding: const EdgeInsets.all(16),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: Image.memory(bytes, fit: BoxFit.contain),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(8),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  '${(bytes.length / 1024).toStringAsFixed(0)} KB',
+                  style: const TextStyle(color: Colors.white54, fontSize: 12),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Đóng'),
+                ),
+              ],
             ),
           ),
         ],

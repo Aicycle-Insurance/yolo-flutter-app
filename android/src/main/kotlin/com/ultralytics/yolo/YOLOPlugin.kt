@@ -30,6 +30,7 @@ class YOLOPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandler
   private var activityBinding: ActivityPluginBinding? = null // Added to store the binding
   private val TAG = "YOLOPlugin"
   private lateinit var viewFactory: YOLOPlatformViewFactory
+  private lateinit var multiTaskViewFactory: YOLOMultiTaskPlatformViewFactory
   private lateinit var binaryMessenger: io.flutter.plugin.common.BinaryMessenger
 
   override fun onAttachedToEngine(@NonNull flutterPluginBinding: FlutterPlugin.FlutterPluginBinding) {
@@ -39,11 +40,16 @@ class YOLOPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandler
 
     // Create and store the view factory for later activity updates
     viewFactory = YOLOPlatformViewFactory(flutterPluginBinding.binaryMessenger)
-    
-    // Register platform view
+    multiTaskViewFactory = YOLOMultiTaskPlatformViewFactory(flutterPluginBinding.binaryMessenger)
+
+    // Register platform views
     flutterPluginBinding.platformViewRegistry.registerViewFactory(
       "com.ultralytics.yolo/YOLOPlatformView",
       viewFactory
+    )
+    flutterPluginBinding.platformViewRegistry.registerViewFactory(
+      "com.ultralytics.yolo/YOLOMultiTaskPlatformView",
+      multiTaskViewFactory
     )
 
     // Register default method channel for backward compatibility
@@ -58,6 +64,7 @@ class YOLOPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandler
     activity = binding.activity
     activityBinding = binding // Store the binding
     viewFactory.setActivity(activity)
+    multiTaskViewFactory.setActivity(activity)
     activityBinding?.addRequestPermissionsResultListener(this)
   }
 
@@ -70,6 +77,7 @@ class YOLOPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandler
     activity = binding.activity
     activityBinding = binding // Store the new binding
     viewFactory.setActivity(activity)
+    multiTaskViewFactory.setActivity(activity)
     activityBinding?.addRequestPermissionsResultListener(this) // Add listener with new binding
   }
 
@@ -78,6 +86,7 @@ class YOLOPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandler
     activityBinding = null
     activity = null
     viewFactory.setActivity(null)
+    multiTaskViewFactory.setActivity(null)
   }
 
   override fun onDetachedFromEngine(@NonNull binding: FlutterPlugin.FlutterPluginBinding) {
