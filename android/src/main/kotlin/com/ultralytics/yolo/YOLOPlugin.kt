@@ -544,24 +544,30 @@ class YOLOPlugin : FlutterPlugin, ActivityAware, MethodChannel.MethodCallHandler
     grantResults: IntArray
   ): Boolean {
     var handled = false
-    // Iterate over a copy of the values to avoid concurrent modification issues.
+    // Forward to single-task YOLO views.
     val viewsToNotify = ArrayList(viewFactory.activeViews.values)
     for (platformView in viewsToNotify) {
         try {
             handled = true
-            // Assuming only one view actively requests permissions at a time.
-            // If multiple views could request, 'handled' logic might need adjustment
-            // or ensure only the correct view processes it.
             platformView.yoloViewInstance.onRequestPermissionsResult(requestCode, permissions, grantResults)
         } catch (e: Exception) {
             Log.e(TAG, "Error processing permission result for YOLOPlatformView instance", e)
         }
     }
-    if (!handled && viewsToNotify.isNotEmpty()) {
-        // This log means we iterated views but none seemed to handle it, or an exception occurred.
-        Log.w(TAG, "onRequestPermissionsResult was iterated but not confirmed handled by any YOLOPlatformView, or an error occurred during delegation.")
+    // Forward to multi-task YOLO views.
+    val multiViews = ArrayList(multiTaskViewFactory.activeViews.values)
+    for (platformView in multiViews) {
+        try {
+            handled = true
+            platformView.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error processing permission result for YOLOMultiTaskPlatformView instance", e)
+        }
     }
-    return handled // Return true if any view instance successfully processed it.
+    if (!handled && (viewsToNotify.isNotEmpty() || multiViews.isNotEmpty())) {
+        Log.w(TAG, "onRequestPermissionsResult was iterated but not confirmed handled by any view.")
+    }
+    return handled
   }
   
 }

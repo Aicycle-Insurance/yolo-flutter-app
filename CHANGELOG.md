@@ -1,3 +1,11 @@
+## 1.0.1
+
+- Updated `ultralytics_yolo.podspec` to specify source files and resource bundles correctly.
+- Enhanced `YOLOModelResolver` to handle absolute paths for iOS, including extraction of `.mlpackage.zip` and `.mlmodel` files.
+- Modified `MultiTaskYOLOView` to support an optional segmentation model, updating the callback and model resolution logic accordingly.
+- Added torch control functionality to `MultiTaskYOLOController`.
+- Bumped version to 1.0.1 in `pubspec.yaml`.
+
 ## 1.0.0
 
 - Add Multi-task 

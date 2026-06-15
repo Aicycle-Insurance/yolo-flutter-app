@@ -1,5 +1,6 @@
 // Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
 
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
@@ -9,14 +10,14 @@ import 'package:flutter/widgets.dart';
 import 'core/yolo_model_resolver.dart';
 
 /// Callback fired on the main thread for each inference result from one of the
-/// two simultaneous YOLO tasks.
+/// active YOLO tasks.
 ///
 /// [data] contains:
-/// - `"type"`: `"detect"` | `"classify"`
+/// - `"type"`: `"detect"` | `"classify"` | `"segment"`
 /// - `"fps"`: per-task FPS
 /// - `"cameraFps"`: raw camera feed FPS
-/// - `"processingTimeMs"`: CoreML inference time in ms
-/// - `"detections"`: list of detection maps (detect task)
+/// - `"processingTimeMs"`: inference time in ms
+/// - `"detections"`: list of detection maps (detect / segment tasks)
 /// - `"classification"`: map with `top1`, `top1Confidence`, `top5` (classify task)
 typedef MultiTaskStreamCallback = void Function(Map<String, dynamic> data);
 
@@ -24,9 +25,12 @@ typedef MultiTaskStreamCallback = void Function(Map<String, dynamic> data);
 /// to take a still JPEG from the live camera stream.
 class MultiTaskYOLOController {
   MethodChannel? _channel;
+  bool _torchEnabled = false;
 
   void _attach(MethodChannel channel) => _channel = channel;
   void _detach() => _channel = null;
+
+  bool get isTorchEnabled => _torchEnabled;
 
   /// Capture a JPEG still from the current camera frame.
   /// Returns the JPEG bytes, or throws if the camera is not ready.
@@ -37,18 +41,42 @@ class MultiTaskYOLOController {
     if (result == null) throw StateError('capturePhoto returned null');
     return result;
   }
+
+  /// Turn the camera torch on ([enable] = true) or off ([enable] = false).
+  /// Returns the actual torch state after the call — `false` when the device
+  /// has no torch or the call is made before the view is attached.
+  Future<bool> setTorch(bool enable) async {
+    final ch = _channel;
+    if (ch == null) return false;
+    final result = await ch.invokeMethod<bool>('setTorch', {'enable': enable});
+    _torchEnabled = result ?? false;
+    return _torchEnabled;
+  }
+
+  Future<bool> toggleTorch() => setTorch(!_torchEnabled);
+
+  /// Stops the camera and releases all CoreML model predictors from memory.
+  /// Call this before removing [MultiTaskYOLOView] from the tree so GPU/ANE
+  /// memory is freed immediately rather than waiting for a potentially-delayed deinit.
+  Future<void> stop() async {
+    final ch = _channel;
+    if (ch == null) return;
+    await ch.invokeMethod<void>('stop');
+  }
 }
 
-/// A Flutter widget that hosts a native iOS view running detection and classification
-/// simultaneously on a single camera stream — no JPEG round-trip,
-/// no MethodChannel serialisation per frame.
+/// A Flutter widget that runs detect, classify, and optionally segment simultaneously
+/// on a single camera stream — no JPEG round-trip, no MethodChannel per frame.
 ///
-/// Android is not yet implemented; on Android the widget renders an empty black box.
+/// Pass [segmentModelPath] to enable a third segmentation model running in parallel.
+/// The [onStreamingData] callback fires for every result; check `data["type"]`
+/// (`"detect"`, `"classify"`, or `"segment"`) to route results.
 class MultiTaskYOLOView extends StatefulWidget {
   const MultiTaskYOLOView({
     super.key,
     required this.detectModelPath,
     required this.classifyModelPath,
+    this.segmentModelPath,
     this.controller,
     this.onStreamingData,
     this.lensFacing = 'back',
@@ -59,6 +87,11 @@ class MultiTaskYOLOView extends StatefulWidget {
 
   final String detectModelPath;
   final String classifyModelPath;
+
+  /// Optional segmentation model. When non-null, runs in parallel with detect + classify.
+  /// Results arrive via [onStreamingData] with `data["type"] == "segment"`.
+  final String? segmentModelPath;
+
   final MultiTaskYOLOController? controller;
   final MultiTaskStreamCallback? onStreamingData;
   final String lensFacing;
@@ -75,10 +108,12 @@ class _MultiTaskYOLOViewState extends State<MultiTaskYOLOView> {
   late final String _viewId;
   EventChannel? _eventChannel;
   MethodChannel? _methodChannel;
+  StreamSubscription<dynamic>? _eventSubscription;
 
   // Resolved absolute paths (null = still resolving)
   String? _detectResolved;
   String? _classifyResolved;
+  String? _segmentResolved;
   String? _resolutionError;
 
   @override
@@ -90,14 +125,18 @@ class _MultiTaskYOLOViewState extends State<MultiTaskYOLOView> {
 
   Future<void> _resolveModels() async {
     try {
-      final results = await Future.wait([
+      final futures = [
         YOLOModelResolver.preparePath(widget.detectModelPath),
         YOLOModelResolver.preparePath(widget.classifyModelPath),
-      ]);
+        if (widget.segmentModelPath != null)
+          YOLOModelResolver.preparePath(widget.segmentModelPath!),
+      ];
+      final results = await Future.wait(futures);
       if (!mounted) return;
       setState(() {
         _detectResolved = results[0];
         _classifyResolved = results[1];
+        if (widget.segmentModelPath != null) _segmentResolved = results[2];
       });
     } catch (e) {
       if (!mounted) return;
@@ -115,22 +154,35 @@ class _MultiTaskYOLOViewState extends State<MultiTaskYOLOView> {
 
     widget.controller?._attach(_methodChannel!);
 
-    _eventChannel!.receiveBroadcastStream().listen((event) {
-      if (event is Map && widget.onStreamingData != null) {
-        widget.onStreamingData!(Map<String, dynamic>.from(event));
-      }
-    });
+    _eventSubscription?.cancel();
+    _eventSubscription = _eventChannel!.receiveBroadcastStream().listen(
+      (event) {
+        if (event is Map && widget.onStreamingData != null) {
+          widget.onStreamingData!(Map<String, dynamic>.from(event));
+        }
+      },
+      onError: (Object error) {
+        // ignore stream errors to prevent unhandled exceptions
+      },
+      cancelOnError: false,
+    );
   }
 
-  Map<String, dynamic> get _creationParams => {
-    'viewId': _viewId,
-    'detectModel': _detectResolved!,
-    'classifyModel': _classifyResolved!,
-    'lensFacing': widget.lensFacing,
-    'useGpu': widget.useGpu,
-    'confidenceThreshold': widget.confidenceThreshold,
-    'iouThreshold': widget.iouThreshold,
-  };
+  Map<String, dynamic> get _creationParams {
+    final params = <String, dynamic>{
+      'viewId': _viewId,
+      'detectModel': _detectResolved!,
+      'classifyModel': _classifyResolved!,
+      'lensFacing': widget.lensFacing,
+      'useGpu': widget.useGpu,
+      'confidenceThreshold': widget.confidenceThreshold,
+      'iouThreshold': widget.iouThreshold,
+    };
+    if (_segmentResolved != null) {
+      params['segmentModel'] = _segmentResolved!;
+    }
+    return params;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -151,8 +203,9 @@ class _MultiTaskYOLOViewState extends State<MultiTaskYOLOView> {
       );
     }
 
-    if (_detectResolved == null || _classifyResolved == null) {
-      // Still resolving (extracting zip from assets → Documents/files dir)
+    final segmentPending = widget.segmentModelPath != null && _segmentResolved == null;
+    if (_detectResolved == null || _classifyResolved == null || segmentPending) {
+      // Still resolving model paths
       return const ColoredBox(color: Color(0xFF000000));
     }
 
@@ -178,6 +231,8 @@ class _MultiTaskYOLOViewState extends State<MultiTaskYOLOView> {
 
   @override
   void dispose() {
+    _eventSubscription?.cancel();
+    _eventSubscription = null;
     widget.controller?._detach();
     _methodChannel?.invokeMethod('stop');
     super.dispose();

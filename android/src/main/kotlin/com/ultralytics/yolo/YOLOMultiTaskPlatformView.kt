@@ -17,9 +17,10 @@ import io.flutter.plugin.platform.PlatformViewFactory
 /** Flutter platform-view wrapper for YOLOMultiTaskAndroidView. */
 class YOLOMultiTaskPlatformView(
     private val context: Context,
-    viewId: Int,
+    private val viewId: Int,
     args: Any?,
-    messenger: BinaryMessenger
+    messenger: BinaryMessenger,
+    private val onDispose: ((Int) -> Unit)? = null
 ) : PlatformView {
 
     private val TAG = "YOLOMultiTaskPlatformView"
@@ -60,6 +61,11 @@ class YOLOMultiTaskPlatformView(
                             }
                         }
                     }
+                    "setTorch" -> {
+                        val enable = (call.arguments as? Map<*, *>)?.get("enable") as? Boolean
+                            ?: run { result.error("bad_args", "enable (bool) is required", null); return@setMethodCallHandler }
+                        result.success(multiTaskView.setTorchMode(enable))
+                    }
                     else -> result.notImplemented()
                 }
             }
@@ -88,10 +94,13 @@ class YOLOMultiTaskPlatformView(
                 androidx.camera.core.CameraSelector.LENS_FACING_BACK
             val confidence = params["confidenceThreshold"] as? Double ?: 0.25
             val iou = params["iouThreshold"] as? Double ?: 0.7
+            val segmentModel = params["segmentModel"] as? String
 
             multiTaskView.loadModels(
                 detectPath = detectPath,
                 classifyPath = classifyPath,
+                thirdModelPath = segmentModel,
+                thirdModelTask = "segment",
                 useGpu = useGpu,
                 confidenceThreshold = confidence,
                 iouThreshold = iou,
@@ -105,9 +114,13 @@ class YOLOMultiTaskPlatformView(
 
     override fun getView(): View = multiTaskView
 
+    fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        multiTaskView.onRequestPermissionsResult(requestCode, permissions, grantResults)
+    }
+
     override fun dispose() {
-        multiTaskView.stopCamera()
-        multiTaskView.onMultiTaskStream = null
+        onDispose?.invoke(viewId)
+        multiTaskView.release()
         methodChannel.setMethodCallHandler(null)
         eventChannel.setStreamHandler(null)
         eventSink = null
@@ -121,12 +134,17 @@ class YOLOMultiTaskPlatformViewFactory(
 ) : PlatformViewFactory(StandardMessageCodec.INSTANCE) {
 
     private var activity: Activity? = null
+    val activeViews = mutableMapOf<Int, YOLOMultiTaskPlatformView>()
 
     fun setActivity(activity: Activity?) {
         this.activity = activity
     }
 
     override fun create(context: Context, viewId: Int, args: Any?): PlatformView {
-        return YOLOMultiTaskPlatformView(activity ?: context, viewId, args, messenger)
+        val view = YOLOMultiTaskPlatformView(activity ?: context, viewId, args, messenger) { id ->
+            activeViews.remove(id)
+        }
+        activeViews[viewId] = view
+        return view
     }
 }

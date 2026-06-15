@@ -173,7 +173,65 @@ class YOLOModelResolver {
           : _copyFlutterAssetToDocuments(source);
     }
 
+    // Absolute path on iOS: handle zip archives stored with .mlpackage.zip,
+    // .mlpackage, or .mlmodel extensions that haven't been extracted yet.
+    if (_isIosLikePlatform) {
+      return _resolveAbsoluteIosPath(source);
+    }
+
     return source;
+  }
+
+  static Future<String> _resolveAbsoluteIosPath(String source) async {
+    if (source.endsWith('.mlpackage.zip')) {
+      final targetPath = source.replaceFirst('.mlpackage.zip', '.mlpackage');
+      // Already extracted on a previous call
+      if (await _hasValidMlPackage(Directory(targetPath))) return targetPath;
+      if (FileSystemEntity.typeSync(source) == FileSystemEntityType.file) {
+        return _extractZipToMlPackage(File(source), targetPath);
+      }
+      return source;
+    }
+
+    if (source.endsWith('.mlpackage') || source.endsWith('.mlmodel')) {
+      // File on disk may be a zip archive stored with a CoreML extension.
+      // Extract to .mlpackage directory (may change extension for .mlmodel).
+      final targetPath = source.endsWith('.mlpackage')
+          ? source
+          : '${source.replaceFirst(RegExp(r'\.[^/]+$'), '')}.mlpackage';
+      // Already extracted on a previous call (original zip was deleted after extraction).
+      if (await _hasValidMlPackage(Directory(targetPath))) return targetPath;
+      final entityType = FileSystemEntity.typeSync(source);
+      if (entityType == FileSystemEntityType.file) {
+        return _extractZipToMlPackage(File(source), targetPath);
+      }
+    }
+
+    return source;
+  }
+
+  static Future<String> _extractZipToMlPackage(
+    File zipFile,
+    String targetPath,
+  ) async {
+    final tempDir = Directory('${targetPath}_tmp');
+    try {
+      final extracted = await _extractMlPackageZip(
+        zipFile.readAsBytesSync(),
+        tempDir,
+      );
+      if (extracted == null) {
+        throw ModelLoadingException('Failed to extract ${zipFile.path}');
+      }
+      zipFile.deleteSync();
+      final dest = Directory(targetPath);
+      if (dest.existsSync()) dest.deleteSync(recursive: true);
+      tempDir.renameSync(targetPath);
+      return targetPath;
+    } catch (e) {
+      if (tempDir.existsSync()) tempDir.deleteSync(recursive: true);
+      rethrow;
+    }
   }
 
   static String? _normalizeOfficialModelId(String source) {

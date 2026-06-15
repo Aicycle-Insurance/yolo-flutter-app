@@ -2,7 +2,10 @@
 
 package com.ultralytics.yolo
 
+import android.Manifest
+import android.app.Activity
 import android.content.Context
+import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Matrix
@@ -14,6 +17,7 @@ import android.widget.FrameLayout
 import androidx.camera.core.*
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
+import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
 import java.io.ByteArrayOutputStream
@@ -23,49 +27,56 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
- * Runs detect and classify simultaneously on a single camera stream.
- * Two Predictor instances each receive raw landscape Bitmaps on separate executors so both
- * run concurrently without serialisation. The Flutter app locks orientation to portrait;
- * we hard-code ImageAnalysis targetRotation = ROTATION_0 so rotationDegrees=90 always, and
- * pass the bitmap to predictors with rotateForCamera=false — the raw sensor bitmap is already
- * landscape (wide), which is the orientation the models expect.
+ * Runs up to three YOLO models simultaneously on a single camera stream.
+ * Each Predictor instance receives raw landscape Bitmaps on a separate executor so all
+ * models run concurrently without serialisation.
  */
 class YOLOMultiTaskAndroidView(context: Context) : FrameLayout(context) {
 
     companion object {
         private const val TAG = "YOLOMultiTaskAndroidView"
         private val CLASS_NAMES = listOf("Móp/bẹp", "Vỡ/nứt", "Thủng/rách", "Trầy/xước")
+        private const val REQUEST_CODE_PERMISSIONS = 1001
+        private val REQUIRED_PERMISSIONS = arrayOf(Manifest.permission.CAMERA)
     }
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private val previewView = PreviewView(context)
 
-    // Each predictor gets its own single-thread executor so both run in parallel.
-    private val detectExecutor: ExecutorService = Executors.newSingleThreadExecutor()
+    // Each predictor gets its own single-thread executor so all run in parallel.
+    private val detectExecutor:   ExecutorService = Executors.newSingleThreadExecutor()
     private val classifyExecutor: ExecutorService = Executors.newSingleThreadExecutor()
-    private val cameraExecutor: ExecutorService = Executors.newSingleThreadExecutor()
+    private val thirdExecutor:    ExecutorService = Executors.newSingleThreadExecutor()
+    private val cameraExecutor:   ExecutorService = Executors.newSingleThreadExecutor()
 
-    private var detectPredictor: Predictor? = null
+    private var detectPredictor:   Predictor? = null
     private var classifyPredictor: Predictor? = null
+    private var thirdPredictor:    Predictor? = null
+    private var thirdTaskType:     String = "detect"
 
     // One-frame-deep back-pressure: skip if previous frame is still being processed.
-    private val detectBusy = AtomicBoolean(false)
+    private val detectBusy   = AtomicBoolean(false)
     private val classifyBusy = AtomicBoolean(false)
+    private val thirdBusy    = AtomicBoolean(false)
 
     private var lifecycleOwner: LifecycleOwner? = null
     private var imageCaptureUseCase: ImageCapture? = null
     private var cameraProvider: ProcessCameraProvider? = null
+    private var camera: Camera? = null
 
     @Volatile private var isStopped = false
+    private var pendingLensFacing: Int? = null
 
-    /** Fired on the main thread for every inference result from either task. */
+    /** Fired on the main thread for every inference result from any task. */
     var onMultiTaskStream: ((Map<String, Any>) -> Unit)? = null
 
     // Per-task FPS (calculated from wall-clock interval between results)
-    private var detectLastMs: Long = 0
+    private var detectLastMs:   Long = 0
     private var classifyLastMs: Long = 0
-    private var detectFps: Double = 0.0
+    private var thirdLastMs:    Long = 0
+    private var detectFps:   Double = 0.0
     private var classifyFps: Double = 0.0
+    private var thirdFps:    Double = 0.0
 
     // Camera FPS
     private var camFrameCount = 0
@@ -73,10 +84,7 @@ class YOLOMultiTaskAndroidView(context: Context) : FrameLayout(context) {
     private var camFps = 0.0
 
     init {
-        // COMPATIBLE forces a TextureView instead of a SurfaceView. Inside a Flutter
-        // AndroidView (virtual display) a SurfaceView punches through the Flutter UI and
-        // covers every widget drawn on top of the platform view; a TextureView composites
-        // normally so Stack overlays (buttons, panels) stay visible.
+        // COMPATIBLE forces a TextureView so Stack overlays stay visible inside a Flutter AndroidView.
         previewView.implementationMode = PreviewView.ImplementationMode.COMPATIBLE
         addView(previewView, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
     }
@@ -90,18 +98,22 @@ class YOLOMultiTaskAndroidView(context: Context) : FrameLayout(context) {
     fun loadModels(
         detectPath: String,
         classifyPath: String,
+        thirdModelPath: String? = null,
+        thirdModelTask: String = "detect",
         useGpu: Boolean,
         confidenceThreshold: Double,
         iouThreshold: Double,
         lensFacing: Int,
         completion: () -> Unit
     ) {
+        this.thirdTaskType = thirdModelTask
+        val totalModels = if (thirdModelPath != null) 3 else 2
         val loadedCount = AtomicInteger(0)
 
         fun tryDone() {
-            if (loadedCount.incrementAndGet() == 2) {
+            if (loadedCount.incrementAndGet() == totalModels) {
                 mainHandler.post {
-                    startCamera(lensFacing)
+                    initCamera(lensFacing)
                     completion()
                 }
             }
@@ -131,16 +143,110 @@ class YOLOMultiTaskAndroidView(context: Context) : FrameLayout(context) {
             }
             tryDone()
         }
+
+        if (thirdModelPath != null) {
+            thirdExecutor.execute {
+                try {
+                    val p = createPredictor(thirdModelTask, thirdModelPath, useGpu)
+                    if (p != null) {
+                        p.setConfidenceThreshold(confidenceThreshold)
+                        p.setIouThreshold(iouThreshold)
+                        thirdPredictor = p
+                        Log.d(TAG, "✅ third predictor ($thirdModelTask) loaded")
+                    } else {
+                        Log.e(TAG, "⚠️ third predictor ($thirdModelTask) is null after load")
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "⚠️ third load ($thirdModelTask) failed: ${e.message}")
+                }
+                tryDone()
+            }
+        }
+    }
+
+    private fun createPredictor(task: String, path: String, useGpu: Boolean): BasePredictor? {
+        return when (task.lowercase()) {
+            "classify" -> Classifier(context, path, emptyList(), useGpu)
+            "segment"  -> Segmenter(context, path, emptyList(), useGpu)
+            "pose"     -> PoseEstimator(context, path, emptyList(), useGpu)
+            "obb"      -> ObbDetector(context, path, emptyList(), useGpu)
+            else       -> ObjectDetector(context, path, emptyList(), useGpu)
+        }
     }
 
     fun stopCamera() {
         isStopped = true
-        // Actually release the camera — unbinding must happen on the main thread.
-        mainHandler.post {
-            cameraProvider?.unbindAll()
-            cameraProvider = null
-            imageCaptureUseCase = null
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            stopCameraInternal()
+        } else {
+            mainHandler.post { stopCameraInternal() }
         }
+    }
+
+    private fun stopCameraInternal() {
+        camera?.cameraControl?.enableTorch(false)
+        cameraProvider?.unbindAll()
+        cameraProvider = null
+        imageCaptureUseCase = null
+        camera = null
+    }
+
+    /** Release all resources: camera, executors, and predictors. Safe to call on any thread. */
+    fun release() {
+        isStopped = true
+        onMultiTaskStream = null
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            stopCameraInternal()
+        } else {
+            mainHandler.post { stopCameraInternal() }
+        }
+        detectExecutor.shutdownNow()
+        classifyExecutor.shutdownNow()
+        thirdExecutor.shutdownNow()
+        cameraExecutor.shutdownNow()
+        (detectPredictor as? BasePredictor)?.close()
+        (classifyPredictor as? BasePredictor)?.close()
+        (thirdPredictor as? BasePredictor)?.close()
+        detectPredictor = null
+        classifyPredictor = null
+        thirdPredictor = null
+    }
+
+    fun initCamera(lensFacing: Int) {
+        if (allPermissionsGranted()) {
+            startCamera(lensFacing)
+        } else {
+            pendingLensFacing = lensFacing
+            val activity = context as? Activity ?: run {
+                Log.e(TAG, "Context is not an Activity; cannot request camera permission")
+                return
+            }
+            ActivityCompat.requestPermissions(activity, REQUIRED_PERMISSIONS, REQUEST_CODE_PERMISSIONS)
+        }
+    }
+
+    fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        if (requestCode == REQUEST_CODE_PERMISSIONS) {
+            val facing = pendingLensFacing ?: return
+            if (allPermissionsGranted()) {
+                pendingLensFacing = null
+                startCamera(facing)
+            } else {
+                Log.w(TAG, "Camera permission denied")
+            }
+        }
+    }
+
+    private fun allPermissionsGranted() = REQUIRED_PERMISSIONS.all {
+        ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
+    }
+
+    /** Toggle the flash torch. Returns the requested state, or false if the device has no flash. */
+    fun setTorchMode(enable: Boolean): Boolean {
+        val cam = camera ?: return false
+        if (!cam.cameraInfo.hasFlashUnit()) return false
+        cam.cameraControl.enableTorch(enable)
+        return enable
     }
 
     fun capturePhoto(callback: (ByteArray?) -> Unit) {
@@ -148,8 +254,6 @@ class YOLOMultiTaskAndroidView(context: Context) : FrameLayout(context) {
         ic.takePicture(ContextCompat.getMainExecutor(context), object : ImageCapture.OnImageCapturedCallback() {
             override fun onCaptureSuccess(image: ImageProxy) {
                 try {
-                    // ImageCapture targetRotation = ROTATION_90 → rotationDegrees=0 for standard
-                    // back camera (sensorOrientation=90). normalizeJpeg is a no-op; JPEG is landscape.
                     val rotationDegrees = image.imageInfo.rotationDegrees
                     val plane = image.planes[0]
                     val buf = plane.buffer
@@ -191,15 +295,10 @@ class YOLOMultiTaskAndroidView(context: Context) : FrameLayout(context) {
 
             val selector = CameraSelector.Builder().requireLensFacing(lensFacing).build()
 
-            // Preview: standard CameraX PreviewView — handles display rotation automatically
-            // so the viewfinder looks correct to the user regardless of how they hold the device.
             val preview = Preview.Builder()
                 .setTargetAspectRatio(AspectRatio.RATIO_16_9)
                 .build()
 
-            // ImageAnalysis: hard-coded ROTATION_0 (portrait target) so rotationDegrees=90 always.
-            // We do NOT rotate the bitmap before inference (rotateForCamera=false) — the raw sensor
-            // frame is landscape, which is the orientation we want the models to receive.
             val analysis = ImageAnalysis.Builder()
                 .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                 .setTargetAspectRatio(AspectRatio.RATIO_16_9)
@@ -208,8 +307,6 @@ class YOLOMultiTaskAndroidView(context: Context) : FrameLayout(context) {
                 .build()
                 .also { it.setAnalyzer(cameraExecutor) { proxy -> onFrame(proxy) } }
 
-            // ImageCapture: ROTATION_90 target → rotationDegrees=0 for standard back camera
-            // (sensorOrientation=90). Captured JPEG is landscape without needing EXIF rotation.
             val capture = ImageCapture.Builder()
                 .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
                 .setTargetAspectRatio(AspectRatio.RATIO_16_9)
@@ -218,15 +315,16 @@ class YOLOMultiTaskAndroidView(context: Context) : FrameLayout(context) {
 
             provider.unbindAll()
             try {
-                provider.bindToLifecycle(owner, selector, preview, analysis, capture)
+                camera = provider.bindToLifecycle(owner, selector, preview, analysis, capture)
                 imageCaptureUseCase = capture
             } catch (e: Exception) {
                 Log.w(TAG, "3-use-case bind failed, retrying without ImageCapture: ${e.message}")
                 imageCaptureUseCase = null
                 try {
-                    provider.bindToLifecycle(owner, selector, preview, analysis)
+                    camera = provider.bindToLifecycle(owner, selector, preview, analysis)
                 } catch (e2: Exception) {
                     Log.e(TAG, "Camera bind failed entirely: ${e2.message}")
+                    camera = null
                 }
             }
             preview.setSurfaceProvider(previewView.surfaceProvider)
@@ -240,7 +338,6 @@ class YOLOMultiTaskAndroidView(context: Context) : FrameLayout(context) {
     private fun onFrame(imageProxy: ImageProxy) {
         if (isStopped) { imageProxy.close(); return }
 
-        // Track camera FPS
         val now = System.currentTimeMillis()
         camFrameCount++
         val elapsed = now - camFpsWindowStart
@@ -250,18 +347,18 @@ class YOLOMultiTaskAndroidView(context: Context) : FrameLayout(context) {
             camFpsWindowStart = now
         }
 
-        // toBitmap copies pixels into an independent Bitmap — safe to close imageProxy immediately.
         val bitmap = ImageUtils.toBitmap(imageProxy) ?: run { imageProxy.close(); return }
         imageProxy.close()
 
         if (isStopped) { bitmap.recycle(); return }
 
-        val w = bitmap.width      // landscape width  (e.g. 1280)
-        val h = bitmap.height     // landscape height (e.g.  720)
+        val w = bitmap.width
+        val h = bitmap.height
         val camFpsNow = camFps
 
         dispatchDetect(bitmap, w, h, camFpsNow)
         dispatchClassify(bitmap, w, h, camFpsNow)
+        dispatchThird(bitmap, w, h, camFpsNow)
 
         bitmap.recycle()
     }
@@ -273,7 +370,7 @@ class YOLOMultiTaskAndroidView(context: Context) : FrameLayout(context) {
         detectExecutor.execute {
             try {
                 val result = p.predict(copy, w, h, rotateForCamera = false, isLandscape = true)
-                val data = buildDetectData(result, camFpsNow)
+                val data = buildTaskData(result, "detect", camFpsNow)
                 mainHandler.post { onMultiTaskStream?.invoke(data) }
             } catch (e: Exception) {
                 Log.e(TAG, "detect predict error: ${e.message}")
@@ -291,7 +388,7 @@ class YOLOMultiTaskAndroidView(context: Context) : FrameLayout(context) {
         classifyExecutor.execute {
             try {
                 val result = p.predict(copy, w, h, rotateForCamera = false, isLandscape = true)
-                val data = buildClassifyData(result, camFpsNow)
+                val data = buildTaskData(result, "classify", camFpsNow)
                 mainHandler.post { onMultiTaskStream?.invoke(data) }
             } catch (e: Exception) {
                 Log.e(TAG, "classify predict error: ${e.message}")
@@ -302,68 +399,86 @@ class YOLOMultiTaskAndroidView(context: Context) : FrameLayout(context) {
         }
     }
 
-    // endregion
-
-    // region Stream data builders
-
-    private fun buildDetectData(result: YOLOResult, camFpsNow: Double): Map<String, Any> {
-        val now = System.currentTimeMillis()
-        if (detectLastMs > 0) {
-            val dt = now - detectLastMs
-            if (dt > 0) detectFps = 1000.0 / dt
+    private fun dispatchThird(src: Bitmap, w: Int, h: Int, camFpsNow: Double) {
+        val p = thirdPredictor ?: return
+        if (!thirdBusy.compareAndSet(false, true)) return
+        val copy = src.copy(Bitmap.Config.ARGB_8888, false)
+        thirdExecutor.execute {
+            try {
+                val result = p.predict(copy, w, h, rotateForCamera = false, isLandscape = true)
+                val data = buildTaskData(result, thirdTaskType, camFpsNow)
+                mainHandler.post { onMultiTaskStream?.invoke(data) }
+            } catch (e: Exception) {
+                Log.e(TAG, "third predict ($thirdTaskType) error: ${e.message}")
+            } finally {
+                copy.recycle()
+                thirdBusy.set(false)
+            }
         }
-        detectLastMs = now
-
-        val detections: List<Map<String, Any>> = result.boxes.take(50).map { box ->
-            val name = if (box.index < CLASS_NAMES.size) CLASS_NAMES[box.index] else box.cls
-            mapOf(
-                "className" to name,
-                "confidence" to box.conf.toDouble(),
-                "normalizedBox" to mapOf(
-                    "left" to box.xywhn.left.toDouble(),
-                    "top" to box.xywhn.top.toDouble(),
-                    "right" to box.xywhn.right.toDouble(),
-                    "bottom" to box.xywhn.bottom.toDouble()
-                )
-            )
-        }
-
-        return mapOf(
-            "type" to "detect",
-            "fps" to detectFps,
-            "cameraFps" to camFpsNow,
-            // YOLOResult.speed is already in milliseconds on Android (FrameTiming.speedMs).
-            "processingTimeMs" to result.speed,
-            "detections" to detections
-        )
     }
 
-    private fun buildClassifyData(result: YOLOResult, camFpsNow: Double): Map<String, Any> {
-        val now = System.currentTimeMillis()
-        if (classifyLastMs > 0) {
-            val dt = now - classifyLastMs
-            if (dt > 0) classifyFps = 1000.0 / dt
-        }
-        classifyLastMs = now
+    // endregion
 
-        val classMap = mutableMapOf<String, Any>(
-            "top1" to (result.probs?.top1Label ?: ""),
-            "top1Confidence" to (result.probs?.top1Conf?.toDouble() ?: 0.0)
-        )
-        result.probs?.let { probs ->
-            classMap["top5"] = (0 until minOf(probs.top5Labels.size, probs.top5Confs.size)).map { i ->
-                mapOf("name" to probs.top5Labels[i], "confidence" to probs.top5Confs[i].toDouble())
+    // region Stream data builder
+
+    private fun buildTaskData(result: YOLOResult, task: String, camFpsNow: Double): Map<String, Any> {
+        val now = System.currentTimeMillis()
+        val fps: Double
+        when (task) {
+            "detect" -> {
+                if (detectLastMs > 0) { val dt = now - detectLastMs; if (dt > 0) detectFps = 1000.0 / dt }
+                detectLastMs = now; fps = detectFps
+            }
+            "classify" -> {
+                if (classifyLastMs > 0) { val dt = now - classifyLastMs; if (dt > 0) classifyFps = 1000.0 / dt }
+                classifyLastMs = now; fps = classifyFps
+            }
+            else -> {
+                if (thirdLastMs > 0) { val dt = now - thirdLastMs; if (dt > 0) thirdFps = 1000.0 / dt }
+                thirdLastMs = now; fps = thirdFps
             }
         }
 
-        return mapOf(
-            "type" to "classify",
-            "fps" to classifyFps,
+        val base = mutableMapOf<String, Any>(
+            "type" to task,
+            "fps" to fps,
             "cameraFps" to camFpsNow,
-            // YOLOResult.speed is already in milliseconds on Android (FrameTiming.speedMs).
-            "processingTimeMs" to result.speed,
-            "classification" to classMap
+            "processingTimeMs" to result.speed
         )
+
+        when (task) {
+            "classify" -> {
+                val classMap = mutableMapOf<String, Any>(
+                    "top1" to (result.probs?.top1Label ?: ""),
+                    "top1Confidence" to (result.probs?.top1Conf?.toDouble() ?: 0.0)
+                )
+                result.probs?.let { probs ->
+                    classMap["top5"] = (0 until minOf(probs.top5Labels.size, probs.top5Confs.size)).map { i ->
+                        mapOf("name" to probs.top5Labels[i], "confidence" to probs.top5Confs[i].toDouble())
+                    }
+                }
+                base["classification"] = classMap
+            }
+            else -> {
+                // detect, segment, pose, obb — all have boxes
+                val detections: List<Map<String, Any>> = result.boxes.take(50).map { box ->
+                    val name = if (box.index < CLASS_NAMES.size) CLASS_NAMES[box.index] else box.cls
+                    mapOf(
+                        "className" to name,
+                        "confidence" to box.conf.toDouble(),
+                        "normalizedBox" to mapOf(
+                            "left"   to box.xywhn.left.toDouble(),
+                            "top"    to box.xywhn.top.toDouble(),
+                            "right"  to box.xywhn.right.toDouble(),
+                            "bottom" to box.xywhn.bottom.toDouble()
+                        )
+                    )
+                }
+                base["detections"] = detections
+            }
+        }
+
+        return base
     }
 
     // endregion
@@ -387,13 +502,6 @@ class YOLOMultiTaskAndroidView(context: Context) : FrameLayout(context) {
 
     override fun onDetachedFromWindow() {
         super.onDetachedFromWindow()
-        stopCamera()
-        detectExecutor.shutdownNow()
-        classifyExecutor.shutdownNow()
-        cameraExecutor.shutdownNow()
-        (detectPredictor as? BasePredictor)?.close()
-        (classifyPredictor as? BasePredictor)?.close()
-        detectPredictor = null
-        classifyPredictor = null
+        release()
     }
 }

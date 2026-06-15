@@ -55,6 +55,7 @@ public final class SwiftYOLOMultiTaskPlatformView: NSObject,
     let cameraPosition: AVCaptureDevice.Position = lensFacing == "front" ? .front : .back
     let confidenceThreshold = dict["confidenceThreshold"] as? Double ?? 0.25
     let iouThreshold = dict["iouThreshold"] as? Double ?? 0.7
+    let segmentModelPath = dict["segmentModel"] as? String
 
     let view = YOLOMultiTaskView(frame: frame)
     multiTaskView = view
@@ -67,6 +68,8 @@ public final class SwiftYOLOMultiTaskPlatformView: NSObject,
     view.loadModels(
       detectPath: detectPath,
       classifyPath: classifyPath,
+      thirdModelPath: segmentModelPath,
+      thirdModelTask: "segment",
       useGpu: useGpu,
       confidenceThreshold: confidenceThreshold,
       iouThreshold: iouThreshold,
@@ -85,6 +88,8 @@ public final class SwiftYOLOMultiTaskPlatformView: NSObject,
       switch call.method {
       case "stop":
         self.multiTaskView?.stopCamera()
+        self.multiTaskView?.releaseResources()
+        self.multiTaskView = nil
         result(nil)
       case "capturePhoto":
         guard let view = self.multiTaskView else {
@@ -100,6 +105,15 @@ public final class SwiftYOLOMultiTaskPlatformView: NSObject,
             }
           }
         }
+      case "setTorch":
+        guard let args = call.arguments as? [String: Any],
+          let enable = args["enable"] as? Bool
+        else {
+          result(FlutterError(code: "bad_args", message: "enable (bool) is required", details: nil))
+          return
+        }
+        let active = self.multiTaskView?.setTorchMode(enable) ?? false
+        result(active)
       default:
         result(FlutterMethodNotImplemented)
       }
@@ -127,7 +141,7 @@ public final class SwiftYOLOMultiTaskPlatformView: NSObject,
       eventSink = nil
       eventChannel.setStreamHandler(nil)
       methodChannel.setMethodCallHandler(nil)
-      multiTaskView?.stopCamera()
+      multiTaskView?.releaseResources()
       multiTaskView = nil
     }
   }

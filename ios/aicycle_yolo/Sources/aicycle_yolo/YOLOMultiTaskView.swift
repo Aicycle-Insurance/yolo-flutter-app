@@ -1,9 +1,8 @@
 // Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
 
-//  YOLOMultiTaskView — runs detect and classify on a single camera stream.
-//  Two BasePredictor instances each receive raw CVPixelBuffers directly; no JPEG
-//  round-trip or MethodChannel serialisation overhead. Each predictor uses the iOS
-//  Neural Engine / GPU concurrently via Apple's CoreML async scheduling.
+//  YOLOMultiTaskView — runs up to three YOLO models on a single camera stream simultaneously.
+//  Each BasePredictor receives raw CVPixelBuffers on its own dispatch queue so all models
+//  run concurrently via Apple's CoreML async scheduling.
 
 import AVFoundation
 import CoreVideo
@@ -45,7 +44,7 @@ final class MultiTaskPredictorAdapter: ResultsListener, InferenceTimeListener,
 // MARK: - YOLOMultiTaskView
 
 /// A UIView that hosts a single AVCaptureSession and dispatches each incoming
-/// camera frame to three independent YOLO predictors simultaneously.
+/// camera frame to up to three independent YOLO predictors simultaneously.
 @MainActor
 public class YOLOMultiTaskView: UIView {
 
@@ -55,35 +54,41 @@ public class YOLOMultiTaskView: UIView {
   private var previewLayer: AVCaptureVideoPreviewLayer?
   private let photoOutput = AVCapturePhotoOutput()
   private var photoCaptureCompletion: ((Data?) -> Void)?
+  private var captureDevice: AVCaptureDevice?
 
   /// Serial queue for camera delegate callbacks and busy-flag mutations only.
   let cameraQueue = DispatchQueue(label: "yolo.multi-task.camera", qos: .userInteractive)
 
-  /// Per-predictor inference queues. predict() is synchronous (blocks the caller), so each
-  /// predictor runs on its own queue so both run concurrently instead of serially.
-  private let detectQueue = DispatchQueue(label: "yolo.infer.detect", qos: .userInteractive)
+  /// Per-predictor inference queues — each predictor runs concurrently.
+  private let detectQueue  = DispatchQueue(label: "yolo.infer.detect",   qos: .userInteractive)
   private let classifyQueue = DispatchQueue(label: "yolo.infer.classify", qos: .userInteractive)
+  private let thirdQueue   = DispatchQueue(label: "yolo.infer.third",    qos: .userInteractive)
 
   // MARK: Predictors
 
-  var detectPredictor: BasePredictor?
+  var detectPredictor:   BasePredictor?
   var classifyPredictor: BasePredictor?
+  var thirdPredictor:    BasePredictor?
+  var thirdTaskType:     String = "detect"
 
-  /// One-frame-deep back-pressure per predictor: if the previous frame is still
-  /// being processed we skip rather than queue up. Accessed only on cameraQueue.
-  var detectBusy = false
+  /// One-frame-deep back-pressure per predictor. Accessed only on cameraQueue.
+  var detectBusy   = false
   var classifyBusy = false
+  var thirdBusy    = false
 
-  private lazy var detectAdapter = MultiTaskPredictorAdapter(taskName: "detect", cameraQueue: cameraQueue)
+  private lazy var detectAdapter   = MultiTaskPredictorAdapter(taskName: "detect",   cameraQueue: cameraQueue)
   private lazy var classifyAdapter = MultiTaskPredictorAdapter(taskName: "classify", cameraQueue: cameraQueue)
+  private lazy var thirdAdapter    = MultiTaskPredictorAdapter(taskName: "third",    cameraQueue: cameraQueue)
 
   // MARK: Per-task FPS tracking (cameraQueue)
 
-  private var detectLastResultTime: Double = 0
+  private var detectLastResultTime:   Double = 0
   private var classifyLastResultTime: Double = 0
+  private var thirdLastResultTime:    Double = 0
 
-  private var detectFps: Double = 0
+  private var detectFps:   Double = 0
   private var classifyFps: Double = 0
+  private var thirdFps:    Double = 0
 
   // Camera FPS (cameraQueue)
   private var camFrameCount = 0
@@ -92,8 +97,8 @@ public class YOLOMultiTaskView: UIView {
 
   // MARK: Callback
 
-  /// Called on the main thread with a stream-data dict. Keys: "type" (detect/segment/classify),
-  /// "detections", "processingTimeMs", "fps", "cameraFps".
+  /// Called on the main thread with a stream-data dict. Keys: "type", "fps", "cameraFps",
+  /// "processingTimeMs", plus task-specific keys ("detections", "classification", etc.).
   var onMultiTaskStream: (([String: Any]) -> Void)?
 
   // MARK: Loading indicator
@@ -132,24 +137,32 @@ public class YOLOMultiTaskView: UIView {
   // MARK: - Adapter wiring
 
   private func wireAdapters() {
-    detectAdapter.onResult = { [weak self] result in self?.handleResult(result, task: "detect") }
-    classifyAdapter.onResult = { [weak self] result in self?.handleResult(result, task: "classify") }
+    detectAdapter.onResult   = { [weak self] r in self?.handleResult(r, task: "detect") }
+    classifyAdapter.onResult = { [weak self] r in self?.handleResult(r, task: "classify") }
+    thirdAdapter.onResult    = { [weak self] r in
+      guard let self else { return }
+      self.handleResult(r, task: self.thirdTaskType)
+    }
 
-    detectAdapter.onTime = { [weak self] _, fps in self?.detectFps = fps }
+    detectAdapter.onTime   = { [weak self] _, fps in self?.detectFps   = fps }
     classifyAdapter.onTime = { [weak self] _, fps in self?.classifyFps = fps }
+    thirdAdapter.onTime    = { [weak self] _, fps in self?.thirdFps    = fps }
   }
 
   // MARK: - Result handling (cameraQueue)
 
   private func handleResult(_ result: YOLOResult, task: String) {
-    // Clear busy flag so the next frame can be dispatched.
+    // Clear busy flag for the predictor that just finished.
     switch task {
     case "detect":
       detectBusy = false
       detectPredictor?.isUpdating = false
-    default:
+    case "classify":
       classifyBusy = false
       classifyPredictor?.isUpdating = false
+    default:
+      thirdBusy = false
+      thirdPredictor?.isUpdating = false
     }
 
     // FPS from result interval
@@ -163,13 +176,20 @@ public class YOLOMultiTaskView: UIView {
       }
       detectLastResultTime = now
       taskFps = detectFps
-    default:
+    case "classify":
       if classifyLastResultTime > 0 {
         let dt = now - classifyLastResultTime
         if dt > 0 { classifyFps = 1.0 / dt }
       }
       classifyLastResultTime = now
       taskFps = classifyFps
+    default:
+      if thirdLastResultTime > 0 {
+        let dt = now - thirdLastResultTime
+        if dt > 0 { thirdFps = 1.0 / dt }
+      }
+      thirdLastResultTime = now
+      taskFps = thirdFps
     }
 
     let camFpsSnapshot = camFps
@@ -206,6 +226,7 @@ public class YOLOMultiTaskView: UIView {
         ]
       }
     default:
+      // detect, segment, pose, obb — all have boxes
       let classNames = ["Móp/bẹp", "Vỡ/nứt", "Thủng/rách", "Trầy/xước"]
       var detections: [[String: Any]] = []
       for box in result.boxes.prefix(50) {
@@ -214,9 +235,9 @@ public class YOLOMultiTaskView: UIView {
           "className": name,
           "confidence": Double(box.conf),
           "normalizedBox": [
-            "left": Double(box.xywhn.minX),
-            "top": Double(box.xywhn.minY),
-            "right": Double(box.xywhn.maxX),
+            "left":   Double(box.xywhn.minX),
+            "top":    Double(box.xywhn.minY),
+            "right":  Double(box.xywhn.maxX),
             "bottom": Double(box.xywhn.maxY),
           ],
         ])
@@ -229,18 +250,22 @@ public class YOLOMultiTaskView: UIView {
 
   // MARK: - Model loading
 
-  /// Load detect and classify models. `completion` fires on the main thread once both finish
-  /// (or fail silently with a log). Camera starts automatically after all models are ready.
+  /// Load two or three models concurrently. `thirdModelPath` / `thirdModelTask` are optional.
+  /// `completion` fires on the main thread once all requested models finish loading.
+  /// Camera starts automatically after all models are ready.
   func loadModels(
     detectPath: String,
     classifyPath: String,
+    thirdModelPath: String? = nil,
+    thirdModelTask: String = "detect",
     useGpu: Bool = true,
     confidenceThreshold: Double = 0.25,
     iouThreshold: Double = 0.7,
     cameraPosition: AVCaptureDevice.Position = .back,
     completion: @escaping () -> Void
   ) {
-    expectedCount = 2
+    self.thirdTaskType = thirdModelTask
+    expectedCount = thirdModelPath != nil ? 3 : 2
     loadedCount = 0
 
     func tryDone() {
@@ -262,13 +287,35 @@ public class YOLOMultiTaskView: UIView {
       self?.detectPredictor = p
       tryDone()
     }
+
     load(path: classifyPath, task: .classify, useGpu: useGpu) { [weak self] p in
       if p == nil { NSLog("YOLOMultiTaskView: ⚠️ classify predictor is nil after load") }
       else { NSLog("YOLOMultiTaskView: ✅ classify predictor loaded") }
       p?.setConfidenceThreshold(confidence: confidenceThreshold)
-      // classify task uses softmax probabilities, IOU not applicable
       self?.classifyPredictor = p
       tryDone()
+    }
+
+    if let thirdPath = thirdModelPath {
+      let yoloTask = yoloTaskFromString(thirdModelTask)
+      load(path: thirdPath, task: yoloTask, useGpu: useGpu) { [weak self] p in
+        if p == nil { NSLog("YOLOMultiTaskView: ⚠️ third predictor (\(thirdModelTask)) is nil after load") }
+        else { NSLog("YOLOMultiTaskView: ✅ third predictor (\(thirdModelTask)) loaded") }
+        p?.setConfidenceThreshold(confidence: confidenceThreshold)
+        p?.setIouThreshold(iou: iouThreshold)
+        self?.thirdPredictor = p
+        tryDone()
+      }
+    }
+  }
+
+  private func yoloTaskFromString(_ task: String) -> YOLOTask {
+    switch task.lowercased() {
+    case "classify": return .classify
+    case "segment":  return .segment
+    case "pose":     return .pose
+    case "obb":      return .obb
+    default:         return .detect
     }
   }
 
@@ -296,10 +343,31 @@ public class YOLOMultiTaskView: UIView {
 
   private func resolveModelURL(_ nameOrPath: String) -> URL? {
     let lc = nameOrPath.lowercased()
+    let fm = FileManager.default
+
+    // Direct path: .mlpackage (must be a directory), .mlmodelc, .mlmodel
     if lc.hasSuffix(".mlmodelc") || lc.hasSuffix(".mlpackage") || lc.hasSuffix(".mlmodel") {
       let u = URL(fileURLWithPath: nameOrPath)
-      if FileManager.default.fileExists(atPath: u.path) { return u }
+      var isDir: ObjCBool = false
+      if fm.fileExists(atPath: u.path, isDirectory: &isDir) {
+        // Only return if it's a directory (proper bundle) — files are unextracted zips
+        // handled by the Dart layer; if they reach here, skip them.
+        if isDir.boolValue { return u }
+        NSLog("YOLOMultiTaskView: ⚠️ path is a file (unextracted zip?): %@", nameOrPath)
+        return nil
+      }
     }
+
+    // .mlpackage.zip: should have been extracted by Dart resolver, but check derived path
+    if lc.hasSuffix(".mlpackage.zip") {
+      let derived = URL(fileURLWithPath: String(nameOrPath.dropLast(4))) // drop ".zip"
+      var isDir: ObjCBool = false
+      if fm.fileExists(atPath: derived.path, isDirectory: &isDir), isDir.boolValue {
+        return derived
+      }
+      return nil
+    }
+
     if let u = Bundle.main.url(forResource: nameOrPath, withExtension: "mlmodelc") { return u }
     if let u = Bundle.main.url(forResource: nameOrPath, withExtension: "mlpackage") { return u }
     return nil
@@ -323,6 +391,7 @@ public class YOLOMultiTaskView: UIView {
       captureSession.commitConfiguration()
       return
     }
+    captureDevice = device
     captureSession.addInput(input)
 
     let output = AVCaptureVideoDataOutput()
@@ -338,10 +407,10 @@ public class YOLOMultiTaskView: UIView {
     // regardless of how the user holds the device. The preview connection is left at
     // its default (.portrait) so the viewfinder appears upright to the user.
     if let conn = output.connection(with: .video) {
-      conn.videoOrientation = .landscapeLeft
+      conn.videoOrientation = .landscapeRight
     }
     if let conn = photoOutput.connection(with: .video) {
-      conn.videoOrientation = .landscapeLeft
+      conn.videoOrientation = .landscapeRight
     }
 
     captureSession.commitConfiguration()
@@ -351,8 +420,6 @@ public class YOLOMultiTaskView: UIView {
       let preview = AVCaptureVideoPreviewLayer(session: self.captureSession)
       preview.videoGravity = .resizeAspectFill
       preview.frame = self.bounds
-      // Do NOT override preview orientation — keep default (.portrait) so the
-      // viewfinder looks correct to the user while the video output is landscape.
       self.layer.insertSublayer(preview, at: 0)
       self.previewLayer = preview
     }
@@ -371,10 +438,45 @@ public class YOLOMultiTaskView: UIView {
     }
   }
 
+  @discardableResult
+  public func setTorchMode(_ enabled: Bool) -> Bool {
+    guard let device = captureDevice, device.hasTorch else { return false }
+    do {
+      try device.lockForConfiguration()
+      defer { device.unlockForConfiguration() }
+      if enabled {
+        try device.setTorchModeOn(level: AVCaptureDevice.maxAvailableTorchLevel)
+      } else {
+        device.torchMode = .off
+      }
+      return device.torchMode == .on
+    } catch {
+      NSLog("YOLOMultiTaskView: Failed to set torch mode: %@", error.localizedDescription)
+      return false
+    }
+  }
+
   public func stopCamera() {
     cameraQueue.async { [weak self] in
       self?.captureSession.stopRunning()
     }
+  }
+
+  /// Full resource release: stops camera, removes preview layer, nils predictors and callback.
+  /// Call from the platform view's dispose/deinit path so GPU/ANE memory is freed promptly
+  /// even if deinit is delayed by a retain cycle in the Flutter EventChannel stream handler.
+  public func releaseResources() {
+    onMultiTaskStream = nil
+    cameraQueue.async { [weak self] in
+      self?.captureSession.stopRunning()
+    }
+    DispatchQueue.main.async { [weak self] in
+      self?.previewLayer?.removeFromSuperlayer()
+      self?.previewLayer = nil
+    }
+    detectPredictor = nil
+    classifyPredictor = nil
+    thirdPredictor = nil
   }
 
   deinit {
@@ -405,10 +507,7 @@ extension YOLOMultiTaskView: AVCaptureVideoDataOutputSampleBufferDelegate, @unch
       camFpsWindowStart = now
     }
 
-    // Dispatch each predictor to its own queue so both run concurrently.
-    // predict() is synchronous — calling it on cameraQueue would serialise both
-    // and block new frames from arriving. Capture the adapters here (on cameraQueue)
-    // so there is no cross-queue access to lazy vars.
+    // Dispatch each predictor to its own queue so all run concurrently.
     if let p = detectPredictor, !detectBusy, !p.isUpdating {
       detectBusy = true
       p.isUpdating = true
@@ -422,6 +521,13 @@ extension YOLOMultiTaskView: AVCaptureVideoDataOutputSampleBufferDelegate, @unch
       let buf = sampleBuffer
       let adapter = classifyAdapter
       classifyQueue.async { p.predict(sampleBuffer: buf, onResultsListener: adapter, onInferenceTime: adapter) }
+    }
+    if let p = thirdPredictor, !thirdBusy, !p.isUpdating {
+      thirdBusy = true
+      p.isUpdating = true
+      let buf = sampleBuffer
+      let adapter = thirdAdapter
+      thirdQueue.async { p.predict(sampleBuffer: buf, onResultsListener: adapter, onInferenceTime: adapter) }
     }
   }
 }
@@ -440,8 +546,6 @@ extension YOLOMultiTaskView: AVCapturePhotoCaptureDelegate {
       completion?(nil)
       return
     }
-    // Flutter's Image.memory() does not apply EXIF rotation.
-    // Re-draw the image so pixel data is always upright (.up) before returning.
     guard let src = UIImage(data: data), src.imageOrientation != .up else {
       completion?(data)
       return
