@@ -1,3 +1,6 @@
+## 1.0.2
+- Refactor model confidence and IoU thresholds for multi-task YOLO implementation
+
 ## 1.0.1
 
 - Updated `ultralytics_yolo.podspec` to specify source files and resource bundles correctly.

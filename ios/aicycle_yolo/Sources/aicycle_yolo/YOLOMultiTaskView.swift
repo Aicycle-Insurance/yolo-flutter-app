@@ -259,8 +259,11 @@ public class YOLOMultiTaskView: UIView {
     thirdModelPath: String? = nil,
     thirdModelTask: String = "detect",
     useGpu: Bool = true,
-    confidenceThreshold: Double = 0.25,
-    iouThreshold: Double = 0.7,
+    detectConfidenceThreshold: Double = 0.25,
+    detectIouThreshold: Double = 0.7,
+    classifyConfidenceThreshold: Double = 0.25,
+    thirdConfidenceThreshold: Double = 0.25,
+    thirdIouThreshold: Double = 0.7,
     cameraPosition: AVCaptureDevice.Position = .back,
     completion: @escaping () -> Void
   ) {
@@ -282,8 +285,8 @@ public class YOLOMultiTaskView: UIView {
     load(path: detectPath, task: .detect, useGpu: useGpu) { [weak self] p in
       if p == nil { NSLog("YOLOMultiTaskView: ⚠️ detect predictor is nil after load") }
       else { NSLog("YOLOMultiTaskView: ✅ detect predictor loaded") }
-      p?.setConfidenceThreshold(confidence: confidenceThreshold)
-      p?.setIouThreshold(iou: iouThreshold)
+      p?.setConfidenceThreshold(confidence: detectConfidenceThreshold)
+      p?.setIouThreshold(iou: detectIouThreshold)
       self?.detectPredictor = p
       tryDone()
     }
@@ -291,7 +294,7 @@ public class YOLOMultiTaskView: UIView {
     load(path: classifyPath, task: .classify, useGpu: useGpu) { [weak self] p in
       if p == nil { NSLog("YOLOMultiTaskView: ⚠️ classify predictor is nil after load") }
       else { NSLog("YOLOMultiTaskView: ✅ classify predictor loaded") }
-      p?.setConfidenceThreshold(confidence: confidenceThreshold)
+      p?.setConfidenceThreshold(confidence: classifyConfidenceThreshold)
       self?.classifyPredictor = p
       tryDone()
     }
@@ -301,8 +304,8 @@ public class YOLOMultiTaskView: UIView {
       load(path: thirdPath, task: yoloTask, useGpu: useGpu) { [weak self] p in
         if p == nil { NSLog("YOLOMultiTaskView: ⚠️ third predictor (\(thirdModelTask)) is nil after load") }
         else { NSLog("YOLOMultiTaskView: ✅ third predictor (\(thirdModelTask)) loaded") }
-        p?.setConfidenceThreshold(confidence: confidenceThreshold)
-        p?.setIouThreshold(iou: iouThreshold)
+        p?.setConfidenceThreshold(confidence: thirdConfidenceThreshold)
+        p?.setIouThreshold(iou: thirdIouThreshold)
         self?.thirdPredictor = p
         tryDone()
       }

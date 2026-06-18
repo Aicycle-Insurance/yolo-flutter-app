@@ -55,7 +55,12 @@ public final class SwiftYOLOMultiTaskPlatformView: NSObject,
     let cameraPosition: AVCaptureDevice.Position = lensFacing == "front" ? .front : .back
     let confidenceThreshold = dict["confidenceThreshold"] as? Double ?? 0.25
     let iouThreshold = dict["iouThreshold"] as? Double ?? 0.7
+    let detectConfidenceThreshold = dict["detectConfidenceThreshold"] as? Double ?? confidenceThreshold
+    let detectIouThreshold = dict["detectIouThreshold"] as? Double ?? iouThreshold
+    let classifyConfidenceThreshold = dict["classifyConfidenceThreshold"] as? Double ?? confidenceThreshold
     let segmentModelPath = dict["segmentModel"] as? String
+    let segmentConfidenceThreshold = dict["segmentConfidenceThreshold"] as? Double ?? confidenceThreshold
+    let segmentIouThreshold = dict["segmentIouThreshold"] as? Double ?? iouThreshold
 
     let view = YOLOMultiTaskView(frame: frame)
     multiTaskView = view
@@ -71,8 +76,11 @@ public final class SwiftYOLOMultiTaskPlatformView: NSObject,
       thirdModelPath: segmentModelPath,
       thirdModelTask: "segment",
       useGpu: useGpu,
-      confidenceThreshold: confidenceThreshold,
-      iouThreshold: iouThreshold,
+      detectConfidenceThreshold: detectConfidenceThreshold,
+      detectIouThreshold: detectIouThreshold,
+      classifyConfidenceThreshold: classifyConfidenceThreshold,
+      thirdConfidenceThreshold: segmentConfidenceThreshold,
+      thirdIouThreshold: segmentIouThreshold,
       cameraPosition: cameraPosition
     ) {
       // Models loaded — camera starts automatically inside loadModels.

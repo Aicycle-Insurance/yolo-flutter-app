@@ -94,7 +94,12 @@ class YOLOMultiTaskPlatformView(
                 androidx.camera.core.CameraSelector.LENS_FACING_BACK
             val confidence = params["confidenceThreshold"] as? Double ?: 0.25
             val iou = params["iouThreshold"] as? Double ?: 0.7
+            val detectConfidence = params["detectConfidenceThreshold"] as? Double ?: confidence
+            val detectIou = params["detectIouThreshold"] as? Double ?: iou
+            val classifyConfidence = params["classifyConfidenceThreshold"] as? Double ?: confidence
             val segmentModel = params["segmentModel"] as? String
+            val segmentConfidence = params["segmentConfidenceThreshold"] as? Double ?: confidence
+            val segmentIou = params["segmentIouThreshold"] as? Double ?: iou
 
             multiTaskView.loadModels(
                 detectPath = detectPath,
@@ -102,8 +107,11 @@ class YOLOMultiTaskPlatformView(
                 thirdModelPath = segmentModel,
                 thirdModelTask = "segment",
                 useGpu = useGpu,
-                confidenceThreshold = confidence,
-                iouThreshold = iou,
+                detectConfidenceThreshold = detectConfidence,
+                detectIouThreshold = detectIou,
+                classifyConfidenceThreshold = classifyConfidence,
+                thirdConfidenceThreshold = segmentConfidence,
+                thirdIouThreshold = segmentIou,
                 lensFacing = lensFacing,
                 completion = { Log.d(TAG, "Models loaded, camera started") }
             )

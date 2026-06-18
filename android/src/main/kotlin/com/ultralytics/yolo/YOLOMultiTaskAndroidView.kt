@@ -101,8 +101,11 @@ class YOLOMultiTaskAndroidView(context: Context) : FrameLayout(context) {
         thirdModelPath: String? = null,
         thirdModelTask: String = "detect",
         useGpu: Boolean,
-        confidenceThreshold: Double,
-        iouThreshold: Double,
+        detectConfidenceThreshold: Double,
+        detectIouThreshold: Double,
+        classifyConfidenceThreshold: Double,
+        thirdConfidenceThreshold: Double,
+        thirdIouThreshold: Double,
         lensFacing: Int,
         completion: () -> Unit
     ) {
@@ -122,8 +125,8 @@ class YOLOMultiTaskAndroidView(context: Context) : FrameLayout(context) {
         detectExecutor.execute {
             try {
                 val p = ObjectDetector(context, detectPath, emptyList(), useGpu)
-                p.setConfidenceThreshold(confidenceThreshold)
-                p.setIouThreshold(iouThreshold)
+                p.setConfidenceThreshold(detectConfidenceThreshold)
+                p.setIouThreshold(detectIouThreshold)
                 detectPredictor = p
                 Log.d(TAG, "✅ detect predictor loaded")
             } catch (e: Exception) {
@@ -135,7 +138,7 @@ class YOLOMultiTaskAndroidView(context: Context) : FrameLayout(context) {
         classifyExecutor.execute {
             try {
                 val p = Classifier(context, classifyPath, emptyList(), useGpu)
-                p.setConfidenceThreshold(confidenceThreshold)
+                p.setConfidenceThreshold(classifyConfidenceThreshold)
                 classifyPredictor = p
                 Log.d(TAG, "✅ classify predictor loaded")
             } catch (e: Exception) {
@@ -149,8 +152,8 @@ class YOLOMultiTaskAndroidView(context: Context) : FrameLayout(context) {
                 try {
                     val p = createPredictor(thirdModelTask, thirdModelPath, useGpu)
                     if (p != null) {
-                        p.setConfidenceThreshold(confidenceThreshold)
-                        p.setIouThreshold(iouThreshold)
+                        p.setConfidenceThreshold(thirdConfidenceThreshold)
+                        p.setIouThreshold(thirdIouThreshold)
                         thirdPredictor = p
                         Log.d(TAG, "✅ third predictor ($thirdModelTask) loaded")
                     } else {

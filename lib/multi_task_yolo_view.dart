@@ -83,6 +83,11 @@ class MultiTaskYOLOView extends StatefulWidget {
     this.useGpu = true,
     this.confidenceThreshold = 0.25,
     this.iouThreshold = 0.7,
+    this.detectConfidenceThreshold,
+    this.detectIouThreshold,
+    this.classifyConfidenceThreshold,
+    this.segmentConfidenceThreshold,
+    this.segmentIouThreshold,
   });
 
   final String detectModelPath;
@@ -96,8 +101,21 @@ class MultiTaskYOLOView extends StatefulWidget {
   final MultiTaskStreamCallback? onStreamingData;
   final String lensFacing;
   final bool useGpu;
+
+  /// Default confidence threshold, applied to any task without a per-model override.
   final double confidenceThreshold;
+
+  /// Default IoU (NMS) threshold, applied to any task without a per-model override.
   final double iouThreshold;
+
+  /// Per-model overrides. When null, the corresponding model falls back to the
+  /// global [confidenceThreshold] / [iouThreshold]. Classification only uses a
+  /// confidence threshold (IoU does not apply to it).
+  final double? detectConfidenceThreshold;
+  final double? detectIouThreshold;
+  final double? classifyConfidenceThreshold;
+  final double? segmentConfidenceThreshold;
+  final double? segmentIouThreshold;
 
   @override
   State<MultiTaskYOLOView> createState() => _MultiTaskYOLOViewState();
@@ -177,9 +195,18 @@ class _MultiTaskYOLOViewState extends State<MultiTaskYOLOView> {
       'useGpu': widget.useGpu,
       'confidenceThreshold': widget.confidenceThreshold,
       'iouThreshold': widget.iouThreshold,
+      'detectConfidenceThreshold':
+          widget.detectConfidenceThreshold ?? widget.confidenceThreshold,
+      'detectIouThreshold': widget.detectIouThreshold ?? widget.iouThreshold,
+      'classifyConfidenceThreshold':
+          widget.classifyConfidenceThreshold ?? widget.confidenceThreshold,
     };
     if (_segmentResolved != null) {
       params['segmentModel'] = _segmentResolved!;
+      params['segmentConfidenceThreshold'] =
+          widget.segmentConfidenceThreshold ?? widget.confidenceThreshold;
+      params['segmentIouThreshold'] =
+          widget.segmentIouThreshold ?? widget.iouThreshold;
     }
     return params;
   }
