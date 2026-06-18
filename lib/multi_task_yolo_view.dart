@@ -13,12 +13,16 @@ import 'core/yolo_model_resolver.dart';
 /// active YOLO tasks.
 ///
 /// [data] contains:
-/// - `"type"`: `"detect"` | `"classify"` | `"segment"`
-/// - `"fps"`: per-task FPS
+/// - `"type"`: `"detect"` | `"classify"` — the task kind
+/// - `"modelId"`: which configured model produced this result. Use this (not `"type"`)
+///   to route results, since two detection models both report `"type": "detect"`:
+///   `"detect"` (primary detect model), `"detect2"` (second detect model),
+///   `"classify"` (classify model)
+/// - `"fps"`: per-model FPS
 /// - `"cameraFps"`: raw camera feed FPS
 /// - `"processingTimeMs"`: inference time in ms
-/// - `"detections"`: list of detection maps (detect / segment tasks)
-/// - `"classification"`: map with `top1`, `top1Confidence`, `top5` (classify task)
+/// - `"detections"`: list of detection maps (detect models)
+/// - `"classification"`: map with `top1`, `top1Confidence`, `top5` (classify model)
 typedef MultiTaskStreamCallback = void Function(Map<String, dynamic> data);
 
 /// Controller for [MultiTaskYOLOView]. Pass to the widget and call [capturePhoto]
@@ -65,18 +69,20 @@ class MultiTaskYOLOController {
   }
 }
 
-/// A Flutter widget that runs detect, classify, and optionally segment simultaneously
-/// on a single camera stream — no JPEG round-trip, no MethodChannel per frame.
+/// A Flutter widget that runs two detection models plus a classification model
+/// simultaneously on a single camera stream — no JPEG round-trip, no MethodChannel
+/// per frame. Each model runs concurrently on its own queue.
 ///
-/// Pass [segmentModelPath] to enable a third segmentation model running in parallel.
-/// The [onStreamingData] callback fires for every result; check `data["type"]`
-/// (`"detect"`, `"classify"`, or `"segment"`) to route results.
+/// Pass [secondDetectModelPath] to enable a second detection model running in parallel
+/// with the primary detect + classify models. The [onStreamingData] callback fires for
+/// every result; route on `data["modelId"]` (`"detect"`, `"detect2"`, `"classify"`)
+/// since both detection models report `data["type"] == "detect"`.
 class MultiTaskYOLOView extends StatefulWidget {
   const MultiTaskYOLOView({
     super.key,
     required this.detectModelPath,
     required this.classifyModelPath,
-    this.segmentModelPath,
+    required this.secondDetectModelPath,
     this.controller,
     this.onStreamingData,
     this.lensFacing = 'back',
@@ -86,26 +92,28 @@ class MultiTaskYOLOView extends StatefulWidget {
     this.detectConfidenceThreshold,
     this.detectIouThreshold,
     this.classifyConfidenceThreshold,
-    this.segmentConfidenceThreshold,
-    this.segmentIouThreshold,
+    this.secondDetectConfidenceThreshold,
+    this.secondDetectIouThreshold,
   });
 
+  /// Primary detection model. Results arrive with `data["modelId"] == "detect"`.
   final String detectModelPath;
   final String classifyModelPath;
 
-  /// Optional segmentation model. When non-null, runs in parallel with detect + classify.
-  /// Results arrive via [onStreamingData] with `data["type"] == "segment"`.
-  final String? segmentModelPath;
+  /// Second detection model. When non-null, runs in parallel with the primary
+  /// detect + classify models; pass null to run only detect + classify. Results arrive
+  /// via [onStreamingData] with `data["type"] == "detect"` and `data["modelId"] == "detect2"`.
+  final String? secondDetectModelPath;
 
   final MultiTaskYOLOController? controller;
   final MultiTaskStreamCallback? onStreamingData;
   final String lensFacing;
   final bool useGpu;
 
-  /// Default confidence threshold, applied to any task without a per-model override.
+  /// Default confidence threshold, applied to any model without a per-model override.
   final double confidenceThreshold;
 
-  /// Default IoU (NMS) threshold, applied to any task without a per-model override.
+  /// Default IoU (NMS) threshold, applied to any model without a per-model override.
   final double iouThreshold;
 
   /// Per-model overrides. When null, the corresponding model falls back to the
@@ -114,8 +122,8 @@ class MultiTaskYOLOView extends StatefulWidget {
   final double? detectConfidenceThreshold;
   final double? detectIouThreshold;
   final double? classifyConfidenceThreshold;
-  final double? segmentConfidenceThreshold;
-  final double? segmentIouThreshold;
+  final double? secondDetectConfidenceThreshold;
+  final double? secondDetectIouThreshold;
 
   @override
   State<MultiTaskYOLOView> createState() => _MultiTaskYOLOViewState();
@@ -131,7 +139,7 @@ class _MultiTaskYOLOViewState extends State<MultiTaskYOLOView> {
   // Resolved absolute paths (null = still resolving)
   String? _detectResolved;
   String? _classifyResolved;
-  String? _segmentResolved;
+  String? _secondDetectResolved;
   String? _resolutionError;
 
   @override
@@ -146,15 +154,14 @@ class _MultiTaskYOLOViewState extends State<MultiTaskYOLOView> {
       final futures = [
         YOLOModelResolver.preparePath(widget.detectModelPath),
         YOLOModelResolver.preparePath(widget.classifyModelPath),
-        if (widget.segmentModelPath != null)
-          YOLOModelResolver.preparePath(widget.segmentModelPath!),
+        YOLOModelResolver.preparePath(widget.secondDetectModelPath!),
       ];
       final results = await Future.wait(futures);
       if (!mounted) return;
       setState(() {
         _detectResolved = results[0];
         _classifyResolved = results[1];
-        if (widget.segmentModelPath != null) _segmentResolved = results[2];
+        _secondDetectResolved = results[2];
       });
     } catch (e) {
       if (!mounted) return;
@@ -201,13 +208,11 @@ class _MultiTaskYOLOViewState extends State<MultiTaskYOLOView> {
       'classifyConfidenceThreshold':
           widget.classifyConfidenceThreshold ?? widget.confidenceThreshold,
     };
-    if (_segmentResolved != null) {
-      params['segmentModel'] = _segmentResolved!;
-      params['segmentConfidenceThreshold'] =
-          widget.segmentConfidenceThreshold ?? widget.confidenceThreshold;
-      params['segmentIouThreshold'] =
-          widget.segmentIouThreshold ?? widget.iouThreshold;
-    }
+    params['secondDetectModel'] = _secondDetectResolved!;
+    params['secondDetectConfidenceThreshold'] =
+        widget.secondDetectConfidenceThreshold ?? widget.confidenceThreshold;
+    params['secondDetectIouThreshold'] =
+        widget.secondDetectIouThreshold ?? widget.iouThreshold;
     return params;
   }
 
@@ -230,8 +235,11 @@ class _MultiTaskYOLOViewState extends State<MultiTaskYOLOView> {
       );
     }
 
-    final segmentPending = widget.segmentModelPath != null && _segmentResolved == null;
-    if (_detectResolved == null || _classifyResolved == null || segmentPending) {
+    final secondDetectPending =
+        widget.secondDetectModelPath != null && _secondDetectResolved == null;
+    if (_detectResolved == null ||
+        _classifyResolved == null ||
+        secondDetectPending) {
       // Still resolving model paths
       return const ColoredBox(color: Color(0xFF000000));
     }

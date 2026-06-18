@@ -70,6 +70,9 @@ public class YOLOMultiTaskView: UIView {
   var classifyPredictor: BasePredictor?
   var thirdPredictor:    BasePredictor?
   var thirdTaskType:     String = "detect"
+  /// Stable identifier for the third predictor's results, so consumers can tell two detect
+  /// models apart (the primary detect model reports `modelId == "detect"`).
+  var thirdModelId:      String = "detect2"
 
   /// One-frame-deep back-pressure per predictor. Accessed only on cameraQueue.
   var detectBusy   = false
@@ -137,12 +140,9 @@ public class YOLOMultiTaskView: UIView {
   // MARK: - Adapter wiring
 
   private func wireAdapters() {
-    detectAdapter.onResult   = { [weak self] r in self?.handleResult(r, task: "detect") }
-    classifyAdapter.onResult = { [weak self] r in self?.handleResult(r, task: "classify") }
-    thirdAdapter.onResult    = { [weak self] r in
-      guard let self else { return }
-      self.handleResult(r, task: self.thirdTaskType)
-    }
+    detectAdapter.onResult   = { [weak self] r in self?.handleResult(r, slot: .detect) }
+    classifyAdapter.onResult = { [weak self] r in self?.handleResult(r, slot: .classify) }
+    thirdAdapter.onResult    = { [weak self] r in self?.handleResult(r, slot: .third) }
 
     detectAdapter.onTime   = { [weak self] _, fps in self?.detectFps   = fps }
     classifyAdapter.onTime = { [weak self] _, fps in self?.classifyFps = fps }
@@ -151,49 +151,55 @@ public class YOLOMultiTaskView: UIView {
 
   // MARK: - Result handling (cameraQueue)
 
-  private func handleResult(_ result: YOLOResult, task: String) {
-    // Clear busy flag for the predictor that just finished.
-    switch task {
-    case "detect":
+  /// Identifies which predictor slot a result came from. Bookkeeping (busy flags, FPS) is
+  /// keyed on the slot — not the task — so two detect models never clobber each other's state.
+  private enum Slot { case detect, classify, third }
+
+  private func handleResult(_ result: YOLOResult, slot: Slot) {
+    let now = CACurrentMediaTime()
+    let task: String
+    let modelId: String
+    var taskFps: Double = 0
+
+    switch slot {
+    case .detect:
       detectBusy = false
       detectPredictor?.isUpdating = false
-    case "classify":
-      classifyBusy = false
-      classifyPredictor?.isUpdating = false
-    default:
-      thirdBusy = false
-      thirdPredictor?.isUpdating = false
-    }
-
-    // FPS from result interval
-    let now = CACurrentMediaTime()
-    var taskFps: Double = 0
-    switch task {
-    case "detect":
       if detectLastResultTime > 0 {
         let dt = now - detectLastResultTime
         if dt > 0 { detectFps = 1.0 / dt }
       }
       detectLastResultTime = now
       taskFps = detectFps
-    case "classify":
+      task = "detect"
+      modelId = "detect"
+    case .classify:
+      classifyBusy = false
+      classifyPredictor?.isUpdating = false
       if classifyLastResultTime > 0 {
         let dt = now - classifyLastResultTime
         if dt > 0 { classifyFps = 1.0 / dt }
       }
       classifyLastResultTime = now
       taskFps = classifyFps
-    default:
+      task = "classify"
+      modelId = "classify"
+    case .third:
+      thirdBusy = false
+      thirdPredictor?.isUpdating = false
       if thirdLastResultTime > 0 {
         let dt = now - thirdLastResultTime
         if dt > 0 { thirdFps = 1.0 / dt }
       }
       thirdLastResultTime = now
       taskFps = thirdFps
+      task = thirdTaskType
+      modelId = thirdModelId
     }
 
     let camFpsSnapshot = camFps
-    let streamData = buildStreamData(result: result, task: task, fps: taskFps, cameraFps: camFpsSnapshot)
+    let streamData = buildStreamData(
+      result: result, task: task, modelId: modelId, fps: taskFps, cameraFps: camFpsSnapshot)
 
     DispatchQueue.main.async { [weak self] in
       self?.onMultiTaskStream?(streamData)
@@ -203,10 +209,11 @@ public class YOLOMultiTaskView: UIView {
   // MARK: - Stream data builder
 
   private func buildStreamData(
-    result: YOLOResult, task: String, fps: Double, cameraFps: Double
+    result: YOLOResult, task: String, modelId: String, fps: Double, cameraFps: Double
   ) -> [String: Any] {
     var map: [String: Any] = [
       "type": task,
+      "modelId": modelId,
       "fps": fps,
       "cameraFps": cameraFps,
       "processingTimeMs": result.speed * 1000,
@@ -226,11 +233,14 @@ public class YOLOMultiTaskView: UIView {
         ]
       }
     default:
-      // detect, segment, pose, obb — all have boxes
+      // detect, segment, pose, obb — all have boxes.
+      // The custom Vietnamese damage labels only apply to the primary detect model; any
+      // other detect model reports its own class names via box.cls.
+      let useCustomNames = (modelId == "detect")
       let classNames = ["Móp/bẹp", "Vỡ/nứt", "Thủng/rách", "Trầy/xước"]
       var detections: [[String: Any]] = []
       for box in result.boxes.prefix(50) {
-        let name = box.index < classNames.count ? classNames[box.index] : box.cls
+        let name = (useCustomNames && box.index < classNames.count) ? classNames[box.index] : box.cls
         detections.append([
           "className": name,
           "confidence": Double(box.conf),

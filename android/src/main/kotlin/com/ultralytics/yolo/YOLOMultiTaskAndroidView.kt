@@ -53,6 +53,12 @@ class YOLOMultiTaskAndroidView(context: Context) : FrameLayout(context) {
     private var classifyPredictor: Predictor? = null
     private var thirdPredictor:    Predictor? = null
     private var thirdTaskType:     String = "detect"
+    /** Stable id for the third predictor's results so consumers can tell two detect models apart. */
+    private var thirdModelId:      String = "detect2"
+
+    /** Predictor slot — bookkeeping (busy flags, FPS) keys on this, never on the task name,
+     *  so two detect models never clobber each other's state. */
+    private enum class Slot { DETECT, CLASSIFY, THIRD }
 
     // One-frame-deep back-pressure: skip if previous frame is still being processed.
     private val detectBusy   = AtomicBoolean(false)
@@ -100,6 +106,7 @@ class YOLOMultiTaskAndroidView(context: Context) : FrameLayout(context) {
         classifyPath: String,
         thirdModelPath: String? = null,
         thirdModelTask: String = "detect",
+        thirdModelId: String = "detect2",
         useGpu: Boolean,
         detectConfidenceThreshold: Double,
         detectIouThreshold: Double,
@@ -110,6 +117,7 @@ class YOLOMultiTaskAndroidView(context: Context) : FrameLayout(context) {
         completion: () -> Unit
     ) {
         this.thirdTaskType = thirdModelTask
+        this.thirdModelId = thirdModelId
         val totalModels = if (thirdModelPath != null) 3 else 2
         val loadedCount = AtomicInteger(0)
 
@@ -373,7 +381,7 @@ class YOLOMultiTaskAndroidView(context: Context) : FrameLayout(context) {
         detectExecutor.execute {
             try {
                 val result = p.predict(copy, w, h, rotateForCamera = false, isLandscape = true)
-                val data = buildTaskData(result, "detect", camFpsNow)
+                val data = buildTaskData(result, Slot.DETECT, camFpsNow)
                 mainHandler.post { onMultiTaskStream?.invoke(data) }
             } catch (e: Exception) {
                 Log.e(TAG, "detect predict error: ${e.message}")
@@ -391,7 +399,7 @@ class YOLOMultiTaskAndroidView(context: Context) : FrameLayout(context) {
         classifyExecutor.execute {
             try {
                 val result = p.predict(copy, w, h, rotateForCamera = false, isLandscape = true)
-                val data = buildTaskData(result, "classify", camFpsNow)
+                val data = buildTaskData(result, Slot.CLASSIFY, camFpsNow)
                 mainHandler.post { onMultiTaskStream?.invoke(data) }
             } catch (e: Exception) {
                 Log.e(TAG, "classify predict error: ${e.message}")
@@ -409,7 +417,7 @@ class YOLOMultiTaskAndroidView(context: Context) : FrameLayout(context) {
         thirdExecutor.execute {
             try {
                 val result = p.predict(copy, w, h, rotateForCamera = false, isLandscape = true)
-                val data = buildTaskData(result, thirdTaskType, camFpsNow)
+                val data = buildTaskData(result, Slot.THIRD, camFpsNow)
                 mainHandler.post { onMultiTaskStream?.invoke(data) }
             } catch (e: Exception) {
                 Log.e(TAG, "third predict ($thirdTaskType) error: ${e.message}")
@@ -424,26 +432,32 @@ class YOLOMultiTaskAndroidView(context: Context) : FrameLayout(context) {
 
     // region Stream data builder
 
-    private fun buildTaskData(result: YOLOResult, task: String, camFpsNow: Double): Map<String, Any> {
+    private fun buildTaskData(result: YOLOResult, slot: Slot, camFpsNow: Double): Map<String, Any> {
         val now = System.currentTimeMillis()
         val fps: Double
-        when (task) {
-            "detect" -> {
+        val task: String
+        val modelId: String
+        when (slot) {
+            Slot.DETECT -> {
                 if (detectLastMs > 0) { val dt = now - detectLastMs; if (dt > 0) detectFps = 1000.0 / dt }
                 detectLastMs = now; fps = detectFps
+                task = "detect"; modelId = "detect"
             }
-            "classify" -> {
+            Slot.CLASSIFY -> {
                 if (classifyLastMs > 0) { val dt = now - classifyLastMs; if (dt > 0) classifyFps = 1000.0 / dt }
                 classifyLastMs = now; fps = classifyFps
+                task = "classify"; modelId = "classify"
             }
-            else -> {
+            Slot.THIRD -> {
                 if (thirdLastMs > 0) { val dt = now - thirdLastMs; if (dt > 0) thirdFps = 1000.0 / dt }
                 thirdLastMs = now; fps = thirdFps
+                task = thirdTaskType; modelId = thirdModelId
             }
         }
 
         val base = mutableMapOf<String, Any>(
             "type" to task,
+            "modelId" to modelId,
             "fps" to fps,
             "cameraFps" to camFpsNow,
             "processingTimeMs" to result.speed
@@ -463,9 +477,12 @@ class YOLOMultiTaskAndroidView(context: Context) : FrameLayout(context) {
                 base["classification"] = classMap
             }
             else -> {
-                // detect, segment, pose, obb — all have boxes
+                // detect, segment, pose, obb — all have boxes.
+                // The custom Vietnamese damage labels only apply to the primary detect model; any
+                // other detect model reports its own class names via box.cls.
+                val useCustomNames = modelId == "detect"
                 val detections: List<Map<String, Any>> = result.boxes.take(50).map { box ->
-                    val name = if (box.index < CLASS_NAMES.size) CLASS_NAMES[box.index] else box.cls
+                    val name = if (useCustomNames && box.index < CLASS_NAMES.size) CLASS_NAMES[box.index] else box.cls
                     mapOf(
                         "className" to name,
                         "confidence" to box.conf.toDouble(),

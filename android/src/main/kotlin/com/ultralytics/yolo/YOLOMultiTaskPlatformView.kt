@@ -97,21 +97,23 @@ class YOLOMultiTaskPlatformView(
             val detectConfidence = params["detectConfidenceThreshold"] as? Double ?: confidence
             val detectIou = params["detectIouThreshold"] as? Double ?: iou
             val classifyConfidence = params["classifyConfidenceThreshold"] as? Double ?: confidence
-            val segmentModel = params["segmentModel"] as? String
-            val segmentConfidence = params["segmentConfidenceThreshold"] as? Double ?: confidence
-            val segmentIou = params["segmentIouThreshold"] as? Double ?: iou
+            // Second detection model — runs in the third predictor slot with a "detect" task.
+            val secondDetectModel = params["secondDetectModel"] as? String
+            val secondDetectConfidence = params["secondDetectConfidenceThreshold"] as? Double ?: confidence
+            val secondDetectIou = params["secondDetectIouThreshold"] as? Double ?: iou
 
             multiTaskView.loadModels(
                 detectPath = detectPath,
                 classifyPath = classifyPath,
-                thirdModelPath = segmentModel,
-                thirdModelTask = "segment",
+                thirdModelPath = secondDetectModel,
+                thirdModelTask = "detect",
+                thirdModelId = "detect2",
                 useGpu = useGpu,
                 detectConfidenceThreshold = detectConfidence,
                 detectIouThreshold = detectIou,
                 classifyConfidenceThreshold = classifyConfidence,
-                thirdConfidenceThreshold = segmentConfidence,
-                thirdIouThreshold = segmentIou,
+                thirdConfidenceThreshold = secondDetectConfidence,
+                thirdIouThreshold = secondDetectIou,
                 lensFacing = lensFacing,
                 completion = { Log.d(TAG, "Models loaded, camera started") }
             )

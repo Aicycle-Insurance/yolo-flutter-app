@@ -58,12 +58,14 @@ public final class SwiftYOLOMultiTaskPlatformView: NSObject,
     let detectConfidenceThreshold = dict["detectConfidenceThreshold"] as? Double ?? confidenceThreshold
     let detectIouThreshold = dict["detectIouThreshold"] as? Double ?? iouThreshold
     let classifyConfidenceThreshold = dict["classifyConfidenceThreshold"] as? Double ?? confidenceThreshold
-    let segmentModelPath = dict["segmentModel"] as? String
-    let segmentConfidenceThreshold = dict["segmentConfidenceThreshold"] as? Double ?? confidenceThreshold
-    let segmentIouThreshold = dict["segmentIouThreshold"] as? Double ?? iouThreshold
+    // Second detection model — runs in the third predictor slot with a "detect" task.
+    let secondDetectModelPath = dict["secondDetectModel"] as? String
+    let secondDetectConfidenceThreshold = dict["secondDetectConfidenceThreshold"] as? Double ?? confidenceThreshold
+    let secondDetectIouThreshold = dict["secondDetectIouThreshold"] as? Double ?? iouThreshold
 
     let view = YOLOMultiTaskView(frame: frame)
     multiTaskView = view
+    view.thirdModelId = "detect2"
 
     view.onMultiTaskStream = { [weak self] data in
       guard let self, let sink = self.eventSink else { return }
@@ -73,14 +75,14 @@ public final class SwiftYOLOMultiTaskPlatformView: NSObject,
     view.loadModels(
       detectPath: detectPath,
       classifyPath: classifyPath,
-      thirdModelPath: segmentModelPath,
-      thirdModelTask: "segment",
+      thirdModelPath: secondDetectModelPath,
+      thirdModelTask: "detect",
       useGpu: useGpu,
       detectConfidenceThreshold: detectConfidenceThreshold,
       detectIouThreshold: detectIouThreshold,
       classifyConfidenceThreshold: classifyConfidenceThreshold,
-      thirdConfidenceThreshold: segmentConfidenceThreshold,
-      thirdIouThreshold: segmentIouThreshold,
+      thirdConfidenceThreshold: secondDetectConfidenceThreshold,
+      thirdIouThreshold: secondDetectIouThreshold,
       cameraPosition: cameraPosition
     ) {
       // Models loaded — camera starts automatically inside loadModels.

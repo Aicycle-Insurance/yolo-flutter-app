@@ -6,10 +6,11 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:aicycle_yolo/ultralytics_yolo.dart';
 
-/// Multi-task inference screen — detect, segment, and classify run simultaneously
-/// on a single camera stream using one native [MultiTaskYOLOView].
-/// All three CoreML models share the same AVCaptureSession; raw CVPixelBuffers are
-/// dispatched to each predictor on its own background queue with no JPEG overhead.
+/// Multi-task inference screen — two detection models and a classification model run
+/// simultaneously on a single camera stream using one native [MultiTaskYOLOView].
+/// All three models share the same AVCaptureSession; raw camera frames are dispatched
+/// to each predictor on its own background queue with no JPEG overhead. Results are
+/// routed by `data["modelId"]` (`"detect"`, `"detect2"`, `"classify"`).
 class MultiTaskScreen extends StatefulWidget {
   const MultiTaskScreen({super.key});
 
@@ -20,12 +21,14 @@ class MultiTaskScreen extends StatefulWidget {
 class _MultiTaskScreenState extends State<MultiTaskScreen> {
   final _controller = MultiTaskYOLOController();
 
-  // Per-task latest results
+  // Per-model latest results
   List<Map<String, dynamic>> _detections = [];
+  List<Map<String, dynamic>> _detections2 = [];
   Map<String, dynamic>? _classification;
 
-  // Per-task performance
+  // Per-model performance
   double _detectMs = 0, _detectFps = 0;
+  double _detect2Ms = 0, _detect2Fps = 0;
   double _classifyMs = 0, _classifyFps = 0;
   double _cameraFps = 0;
 
@@ -53,21 +56,30 @@ class _MultiTaskScreenState extends State<MultiTaskScreen> {
 
   void _onStreamingData(Map<String, dynamic> data) {
     if (!mounted) return;
-    final type = data['type'] as String?;
+    // Route on modelId, not type — both detection models report type == 'detect'.
+    final modelId = data['modelId'] as String?;
     final fps = (data['fps'] as num?)?.toDouble() ?? 0;
     final ms = (data['processingTimeMs'] as num?)?.toDouble() ?? 0;
     final camFps = (data['cameraFps'] as num?)?.toDouble() ?? 0;
 
+    List<Map<String, dynamic>> parseDetections() {
+      final dList = data['detections'];
+      return dList is List
+          ? dList.whereType<Map>().map(Map<String, dynamic>.from).toList()
+          : [];
+    }
+
     setState(() {
       if (camFps > 0) _cameraFps = camFps;
-      switch (type) {
+      switch (modelId) {
         case 'detect':
           _detectFps = fps;
           _detectMs = ms;
-          final dList = data['detections'];
-          _detections = dList is List
-              ? dList.whereType<Map>().map(Map<String, dynamic>.from).toList()
-              : [];
+          _detections = parseDetections();
+        case 'detect2':
+          _detect2Fps = fps;
+          _detect2Ms = ms;
+          _detections2 = parseDetections();
         case 'classify':
           _classifyFps = fps;
           _classifyMs = ms;
@@ -96,6 +108,11 @@ class _MultiTaskScreenState extends State<MultiTaskScreen> {
             classifyModelPath: Platform.isAndroid
                 ? 'assets/models/car_corner_classification_yolo26n-cls_int8.tflite'
                 : 'assets/models/car_corner_classification.mlpackage.zip',
+            // Second detection model running in parallel. Reuses the damage model here
+            // purely to demonstrate two detectors at once — swap in any detect model.
+            secondDetectModelPath: Platform.isAndroid
+                ? 'assets/models/car_damage_detection_mobile_26m.tflite'
+                : 'assets/models/car_damage_detection_mobile_26m.mlpackage.zip',
             controller: _controller,
             onStreamingData: _onStreamingData,
           ),
@@ -121,6 +138,8 @@ class _MultiTaskScreenState extends State<MultiTaskScreen> {
                   cameraFps: _cameraFps,
                   detectMs: _detectMs,
                   detectFps: _detectFps,
+                  detect2Ms: _detect2Ms,
+                  detect2Fps: _detect2Fps,
                   classifyMs: _classifyMs,
                   classifyFps: _classifyFps,
                 ),
@@ -133,6 +152,7 @@ class _MultiTaskScreenState extends State<MultiTaskScreen> {
             alignment: Alignment.bottomCenter,
             child: _ResultsPanel(
               detections: _detections,
+              detections2: _detections2,
               classification: _classification,
             ),
           ),
@@ -226,12 +246,15 @@ class _PerformanceOverlay extends StatelessWidget {
     required this.cameraFps,
     required this.detectMs,
     required this.detectFps,
+    required this.detect2Ms,
+    required this.detect2Fps,
     required this.classifyMs,
     required this.classifyFps,
   });
 
   final double cameraFps;
   final double detectMs, detectFps;
+  final double detect2Ms, detect2Fps;
   final double classifyMs, classifyFps;
 
   @override
@@ -268,6 +291,13 @@ class _PerformanceOverlay extends StatelessWidget {
             color: const Color(0xFF3B82F6),
             ms: detectMs,
             fps: detectFps,
+          ),
+          const SizedBox(height: 4),
+          _LatencyBar(
+            label: 'DET2',
+            color: const Color(0xFF22D3EE),
+            ms: detect2Ms,
+            fps: detect2Fps,
           ),
           const SizedBox(height: 4),
           _LatencyBar(
@@ -350,9 +380,14 @@ class _LatencyBar extends StatelessWidget {
 // MARK: - Results panel
 
 class _ResultsPanel extends StatelessWidget {
-  const _ResultsPanel({required this.detections, required this.classification});
+  const _ResultsPanel({
+    required this.detections,
+    required this.detections2,
+    required this.classification,
+  });
 
   final List<Map<String, dynamic>> detections;
+  final List<Map<String, dynamic>> detections2;
   final Map<String, dynamic>? classification;
 
   @override
@@ -368,11 +403,12 @@ class _ResultsPanel extends StatelessWidget {
           _TaskColumn(
             title: 'DETECT',
             color: const Color(0xFF3B82F6),
-            items: detections.take(4).map((d) {
-              final name = d['className'] as String? ?? '?';
-              final conf = ((d['confidence'] as num?)?.toDouble() ?? 0) * 100;
-              return '$name ${conf.toStringAsFixed(0)}%';
-            }).toList(),
+            items: _detectionItems(detections),
+          ),
+          _TaskColumn(
+            title: 'DETECT 2',
+            color: const Color(0xFF22D3EE),
+            items: _detectionItems(detections2),
           ),
           _TaskColumn(
             title: 'CLASSIFY',
@@ -382,6 +418,14 @@ class _ResultsPanel extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  List<String> _detectionItems(List<Map<String, dynamic>> dets) {
+    return dets.take(4).map((d) {
+      final name = d['className'] as String? ?? '?';
+      final conf = ((d['confidence'] as num?)?.toDouble() ?? 0) * 100;
+      return '$name ${conf.toStringAsFixed(0)}%';
+    }).toList();
   }
 
   List<String> _classifyItems() {

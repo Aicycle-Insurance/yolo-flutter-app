@@ -1,3 +1,7 @@
+## 1.0.3
+- Enhance multi-task YOLO implementation with support for a second detection model and improved result routing by model ID
+- Support both Cocoapod and SPM 
+
 ## 1.0.2
 - Refactor model confidence and IoU thresholds for multi-task YOLO implementation
 
