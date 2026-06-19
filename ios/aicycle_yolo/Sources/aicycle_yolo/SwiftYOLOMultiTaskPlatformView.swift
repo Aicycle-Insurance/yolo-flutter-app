@@ -44,11 +44,13 @@ public final class SwiftYOLOMultiTaskPlatformView: NSObject,
 
     guard
       let dict = args as? [String: Any],
-      let detectPath = dict["detectModel"] as? String,
-      let classifyPath = dict["classifyModel"] as? String
+      dict["detectModel"] != nil || dict["classifyModel"] != nil || dict["secondDetectModel"] != nil
     else {
       return
     }
+
+    let detectPath = dict["detectModel"] as? String
+    let classifyPath = dict["classifyModel"] as? String
 
     let useGpu = dict["useGpu"] as? Bool ?? true
     let lensFacing = dict["lensFacing"] as? String ?? "back"
@@ -58,7 +60,6 @@ public final class SwiftYOLOMultiTaskPlatformView: NSObject,
     let detectConfidenceThreshold = dict["detectConfidenceThreshold"] as? Double ?? confidenceThreshold
     let detectIouThreshold = dict["detectIouThreshold"] as? Double ?? iouThreshold
     let classifyConfidenceThreshold = dict["classifyConfidenceThreshold"] as? Double ?? confidenceThreshold
-    // Second detection model — runs in the third predictor slot with a "detect" task.
     let secondDetectModelPath = dict["secondDetectModel"] as? String
     let secondDetectConfidenceThreshold = dict["secondDetectConfidenceThreshold"] as? Double ?? confidenceThreshold
     let secondDetectIouThreshold = dict["secondDetectIouThreshold"] as? Double ?? iouThreshold

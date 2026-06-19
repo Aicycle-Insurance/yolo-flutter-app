@@ -264,8 +264,8 @@ public class YOLOMultiTaskView: UIView {
   /// `completion` fires on the main thread once all requested models finish loading.
   /// Camera starts automatically after all models are ready.
   func loadModels(
-    detectPath: String,
-    classifyPath: String,
+    detectPath: String? = nil,
+    classifyPath: String? = nil,
     thirdModelPath: String? = nil,
     thirdModelTask: String = "detect",
     useGpu: Bool = true,
@@ -278,7 +278,14 @@ public class YOLOMultiTaskView: UIView {
     completion: @escaping () -> Void
   ) {
     self.thirdTaskType = thirdModelTask
-    expectedCount = thirdModelPath != nil ? 3 : 2
+    expectedCount = [detectPath, classifyPath, thirdModelPath].filter { $0 != nil }.count
+    if expectedCount == 0 {
+      DispatchQueue.main.async { [weak self] in
+        self?.activityIndicator.stopAnimating()
+        completion()
+      }
+      return
+    }
     loadedCount = 0
 
     func tryDone() {
@@ -292,21 +299,25 @@ public class YOLOMultiTaskView: UIView {
       }
     }
 
-    load(path: detectPath, task: .detect, useGpu: useGpu) { [weak self] p in
-      if p == nil { NSLog("YOLOMultiTaskView: ⚠️ detect predictor is nil after load") }
-      else { NSLog("YOLOMultiTaskView: ✅ detect predictor loaded") }
-      p?.setConfidenceThreshold(confidence: detectConfidenceThreshold)
-      p?.setIouThreshold(iou: detectIouThreshold)
-      self?.detectPredictor = p
-      tryDone()
+    if let detectPath = detectPath {
+      load(path: detectPath, task: .detect, useGpu: useGpu) { [weak self] p in
+        if p == nil { NSLog("YOLOMultiTaskView: ⚠️ detect predictor is nil after load") }
+        else { NSLog("YOLOMultiTaskView: ✅ detect predictor loaded") }
+        p?.setConfidenceThreshold(confidence: detectConfidenceThreshold)
+        p?.setIouThreshold(iou: detectIouThreshold)
+        self?.detectPredictor = p
+        tryDone()
+      }
     }
 
-    load(path: classifyPath, task: .classify, useGpu: useGpu) { [weak self] p in
-      if p == nil { NSLog("YOLOMultiTaskView: ⚠️ classify predictor is nil after load") }
-      else { NSLog("YOLOMultiTaskView: ✅ classify predictor loaded") }
-      p?.setConfidenceThreshold(confidence: classifyConfidenceThreshold)
-      self?.classifyPredictor = p
-      tryDone()
+    if let classifyPath = classifyPath {
+      load(path: classifyPath, task: .classify, useGpu: useGpu) { [weak self] p in
+        if p == nil { NSLog("YOLOMultiTaskView: ⚠️ classify predictor is nil after load") }
+        else { NSLog("YOLOMultiTaskView: ✅ classify predictor loaded") }
+        p?.setConfidenceThreshold(confidence: classifyConfidenceThreshold)
+        self?.classifyPredictor = p
+        tryDone()
+      }
     }
 
     if let thirdPath = thirdModelPath {

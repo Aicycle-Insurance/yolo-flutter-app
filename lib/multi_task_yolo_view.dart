@@ -80,9 +80,9 @@ class MultiTaskYOLOController {
 class MultiTaskYOLOView extends StatefulWidget {
   const MultiTaskYOLOView({
     super.key,
-    required this.detectModelPath,
-    required this.classifyModelPath,
-    required this.secondDetectModelPath,
+    this.detectModelPath,
+    this.classifyModelPath,
+    this.secondDetectModelPath,
     this.controller,
     this.onStreamingData,
     this.lensFacing = 'back',
@@ -97,8 +97,8 @@ class MultiTaskYOLOView extends StatefulWidget {
   });
 
   /// Primary detection model. Results arrive with `data["modelId"] == "detect"`.
-  final String detectModelPath;
-  final String classifyModelPath;
+  final String? detectModelPath;
+  final String? classifyModelPath;
 
   /// Second detection model. When non-null, runs in parallel with the primary
   /// detect + classify models; pass null to run only detect + classify. Results arrive
@@ -151,17 +151,40 @@ class _MultiTaskYOLOViewState extends State<MultiTaskYOLOView> {
 
   Future<void> _resolveModels() async {
     try {
-      final futures = [
-        YOLOModelResolver.preparePath(widget.detectModelPath),
-        YOLOModelResolver.preparePath(widget.classifyModelPath),
-        YOLOModelResolver.preparePath(widget.secondDetectModelPath!),
-      ];
+      final futures = <Future<String>>[];
+      final slots = <int, int>{};
+
+      if (widget.detectModelPath != null) {
+        slots[0] = futures.length;
+        futures.add(YOLOModelResolver.preparePath(widget.detectModelPath!));
+      }
+      if (widget.classifyModelPath != null) {
+        slots[1] = futures.length;
+        futures.add(YOLOModelResolver.preparePath(widget.classifyModelPath!));
+      }
+      if (widget.secondDetectModelPath != null) {
+        slots[2] = futures.length;
+        futures.add(YOLOModelResolver.preparePath(widget.secondDetectModelPath!));
+      }
+
+      if (futures.isEmpty) {
+        if (!mounted) return;
+        setState(() {});
+        return;
+      }
+
       final results = await Future.wait(futures);
       if (!mounted) return;
       setState(() {
-        _detectResolved = results[0];
-        _classifyResolved = results[1];
-        _secondDetectResolved = results[2];
+        if (slots.containsKey(0)) {
+          _detectResolved = results[slots[0]!];
+        }
+        if (slots.containsKey(1)) {
+          _classifyResolved = results[slots[1]!];
+        }
+        if (slots.containsKey(2)) {
+          _secondDetectResolved = results[slots[2]!];
+        }
       });
     } catch (e) {
       if (!mounted) return;
@@ -196,8 +219,6 @@ class _MultiTaskYOLOViewState extends State<MultiTaskYOLOView> {
   Map<String, dynamic> get _creationParams {
     final params = <String, dynamic>{
       'viewId': _viewId,
-      'detectModel': _detectResolved!,
-      'classifyModel': _classifyResolved!,
       'lensFacing': widget.lensFacing,
       'useGpu': widget.useGpu,
       'confidenceThreshold': widget.confidenceThreshold,
@@ -208,11 +229,19 @@ class _MultiTaskYOLOViewState extends State<MultiTaskYOLOView> {
       'classifyConfidenceThreshold':
           widget.classifyConfidenceThreshold ?? widget.confidenceThreshold,
     };
-    params['secondDetectModel'] = _secondDetectResolved!;
-    params['secondDetectConfidenceThreshold'] =
-        widget.secondDetectConfidenceThreshold ?? widget.confidenceThreshold;
-    params['secondDetectIouThreshold'] =
-        widget.secondDetectIouThreshold ?? widget.iouThreshold;
+    if (_detectResolved != null) {
+      params['detectModel'] = _detectResolved!;
+    }
+    if (_classifyResolved != null) {
+      params['classifyModel'] = _classifyResolved!;
+    }
+    if (_secondDetectResolved != null) {
+      params['secondDetectModel'] = _secondDetectResolved!;
+      params['secondDetectConfidenceThreshold'] =
+          widget.secondDetectConfidenceThreshold ?? widget.confidenceThreshold;
+      params['secondDetectIouThreshold'] =
+          widget.secondDetectIouThreshold ?? widget.iouThreshold;
+    }
     return params;
   }
 
@@ -235,11 +264,13 @@ class _MultiTaskYOLOViewState extends State<MultiTaskYOLOView> {
       );
     }
 
+    final detectPending =
+      widget.detectModelPath != null && _detectResolved == null;
+    final classifyPending =
+      widget.classifyModelPath != null && _classifyResolved == null;
     final secondDetectPending =
-        widget.secondDetectModelPath != null && _secondDetectResolved == null;
-    if (_detectResolved == null ||
-        _classifyResolved == null ||
-        secondDetectPending) {
+      widget.secondDetectModelPath != null && _secondDetectResolved == null;
+    if (detectPending || classifyPending || secondDetectPending) {
       // Still resolving model paths
       return const ColoredBox(color: Color(0xFF000000));
     }

@@ -102,8 +102,8 @@ class YOLOMultiTaskAndroidView(context: Context) : FrameLayout(context) {
     }
 
     fun loadModels(
-        detectPath: String,
-        classifyPath: String,
+        detectPath: String? = null,
+        classifyPath: String? = null,
         thirdModelPath: String? = null,
         thirdModelTask: String = "detect",
         thirdModelId: String = "detect2",
@@ -118,7 +118,11 @@ class YOLOMultiTaskAndroidView(context: Context) : FrameLayout(context) {
     ) {
         this.thirdTaskType = thirdModelTask
         this.thirdModelId = thirdModelId
-        val totalModels = if (thirdModelPath != null) 3 else 2
+        val totalModels = listOf(detectPath, classifyPath, thirdModelPath).count { it != null }
+        if (totalModels == 0) {
+            Log.e(TAG, "loadModels called without any model paths")
+            return
+        }
         val loadedCount = AtomicInteger(0)
 
         fun tryDone() {
@@ -130,29 +134,33 @@ class YOLOMultiTaskAndroidView(context: Context) : FrameLayout(context) {
             }
         }
 
-        detectExecutor.execute {
-            try {
-                val p = ObjectDetector(context, detectPath, emptyList(), useGpu)
-                p.setConfidenceThreshold(detectConfidenceThreshold)
-                p.setIouThreshold(detectIouThreshold)
-                detectPredictor = p
-                Log.d(TAG, "✅ detect predictor loaded")
-            } catch (e: Exception) {
-                Log.e(TAG, "⚠️ detect load failed: ${e.message}")
+        if (detectPath != null) {
+            detectExecutor.execute {
+                try {
+                    val p = ObjectDetector(context, detectPath, emptyList(), useGpu)
+                    p.setConfidenceThreshold(detectConfidenceThreshold)
+                    p.setIouThreshold(detectIouThreshold)
+                    detectPredictor = p
+                    Log.d(TAG, "✅ detect predictor loaded")
+                } catch (e: Exception) {
+                    Log.e(TAG, "⚠️ detect load failed: ${e.message}")
+                }
+                tryDone()
             }
-            tryDone()
         }
 
-        classifyExecutor.execute {
-            try {
-                val p = Classifier(context, classifyPath, emptyList(), useGpu)
-                p.setConfidenceThreshold(classifyConfidenceThreshold)
-                classifyPredictor = p
-                Log.d(TAG, "✅ classify predictor loaded")
-            } catch (e: Exception) {
-                Log.e(TAG, "⚠️ classify load failed: ${e.message}")
+        if (classifyPath != null) {
+            classifyExecutor.execute {
+                try {
+                    val p = Classifier(context, classifyPath, emptyList(), useGpu)
+                    p.setConfidenceThreshold(classifyConfidenceThreshold)
+                    classifyPredictor = p
+                    Log.d(TAG, "✅ classify predictor loaded")
+                } catch (e: Exception) {
+                    Log.e(TAG, "⚠️ classify load failed: ${e.message}")
+                }
+                tryDone()
             }
-            tryDone()
         }
 
         if (thirdModelPath != null) {

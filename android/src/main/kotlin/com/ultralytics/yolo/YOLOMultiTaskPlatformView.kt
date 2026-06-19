@@ -86,7 +86,7 @@ class YOLOMultiTaskPlatformView(
 
         val detectPath = params?.get("detectModel") as? String
         val classifyPath = params?.get("classifyModel") as? String
-        if (detectPath != null && classifyPath != null) {
+        if (detectPath != null || classifyPath != null) {
             val useGpu = params["useGpu"] as? Boolean ?: true
             val lensFacing = if ((params["lensFacing"] as? String) == "front")
                 androidx.camera.core.CameraSelector.LENS_FACING_FRONT
@@ -118,7 +118,7 @@ class YOLOMultiTaskPlatformView(
                 completion = { Log.d(TAG, "Models loaded, camera started") }
             )
         } else {
-            Log.e(TAG, "Missing detectModel or classifyModel in creation params")
+            Log.e(TAG, "Missing model paths in creation params")
         }
     }
 
