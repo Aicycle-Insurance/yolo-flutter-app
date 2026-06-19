@@ -55,6 +55,9 @@ public class YOLOMultiTaskView: UIView {
   private let photoOutput = AVCapturePhotoOutput()
   private var photoCaptureCompletion: ((Data?) -> Void)?
   private var captureDevice: AVCaptureDevice?
+  private let streamingPreset: AVCaptureSession.Preset = .hd1280x720
+  private let photoCapturePreset: AVCaptureSession.Preset = .photo
+  private let targetPhotoLongEdge: CGFloat = 2560
 
   /// Serial queue for camera delegate callbacks and busy-flag mutations only.
   let cameraQueue = DispatchQueue(label: "yolo.multi-task.camera", qos: .userInteractive)
@@ -406,7 +409,7 @@ public class YOLOMultiTaskView: UIView {
 
   private func setupCamera(position: AVCaptureDevice.Position) {
     captureSession.beginConfiguration()
-    captureSession.sessionPreset = .hd1280x720
+    captureSession.sessionPreset = streamingPreset
 
     guard let device = bestCaptureDevice(position: position),
       let input = try? AVCaptureDeviceInput(device: device),
@@ -437,6 +440,9 @@ public class YOLOMultiTaskView: UIView {
       conn.videoOrientation = .landscapeRight
     }
 
+    // Keep still capture quality high while streaming stays at 720p.
+    photoOutput.isHighResolutionCaptureEnabled = true
+
     captureSession.commitConfiguration()
 
     DispatchQueue.main.async { [weak self] in
@@ -454,11 +460,40 @@ public class YOLOMultiTaskView: UIView {
 
   public func capturePhoto(completion: @escaping (Data?) -> Void) {
     photoCaptureCompletion = completion
-    let settings = AVCapturePhotoSettings()
-    settings.flashMode = .off
     cameraQueue.async { [weak self] in
       guard let self else { completion(nil); return }
+      self.captureSession.beginConfiguration()
+      if self.captureSession.canSetSessionPreset(self.photoCapturePreset) {
+        self.captureSession.sessionPreset = self.photoCapturePreset
+      }
+      self.captureSession.commitConfiguration()
+
+      let settings = AVCapturePhotoSettings()
+      settings.flashMode = .off
+      settings.isHighResolutionPhotoEnabled = self.photoOutput.isHighResolutionCaptureEnabled
       self.photoOutput.capturePhoto(with: settings, delegate: self)
+    }
+  }
+
+  private func restoreStreamingPresetIfNeeded() {
+    captureSession.beginConfiguration()
+    if captureSession.canSetSessionPreset(streamingPreset) {
+      captureSession.sessionPreset = streamingPreset
+    }
+    captureSession.commitConfiguration()
+  }
+
+  private func resizedTo2KLongEdge(_ image: UIImage) -> UIImage {
+    let width = image.size.width
+    let height = image.size.height
+    let longEdge = max(width, height)
+    guard longEdge > 0 else { return image }
+
+    let scale = targetPhotoLongEdge / longEdge
+    let targetSize = CGSize(width: width * scale, height: height * scale)
+    let renderer = UIGraphicsImageRenderer(size: targetSize)
+    return renderer.image { _ in
+      image.draw(in: CGRect(origin: .zero, size: targetSize))
     }
   }
 
@@ -564,20 +599,32 @@ extension YOLOMultiTaskView: AVCapturePhotoCaptureDelegate {
     didFinishProcessingPhoto photo: AVCapturePhoto,
     error: Error?
   ) {
+    cameraQueue.async { [weak self] in
+      self?.restoreStreamingPresetIfNeeded()
+    }
+
     let completion = photoCaptureCompletion
     photoCaptureCompletion = nil
     guard error == nil, let data = photo.fileDataRepresentation() else {
       completion?(nil)
       return
     }
-    guard let src = UIImage(data: data), src.imageOrientation != .up else {
-      completion?(data)
+    guard let src = UIImage(data: data) else {
+      completion?(nil)
       return
     }
-    let renderer = UIGraphicsImageRenderer(size: src.size)
-    let normalized = renderer.jpegData(withCompressionQuality: 0.92) { _ in
-      src.draw(in: CGRect(origin: .zero, size: src.size))
+
+    let normalized: UIImage
+    if src.imageOrientation == .up {
+      normalized = src
+    } else {
+      let renderer = UIGraphicsImageRenderer(size: src.size)
+      normalized = renderer.image { _ in
+        src.draw(in: CGRect(origin: .zero, size: src.size))
+      }
     }
-    completion?(normalized)
+
+    let resized = resizedTo2KLongEdge(normalized)
+    completion?(resized.jpegData(compressionQuality: 0.92))
   }
 }

@@ -11,10 +11,13 @@ import android.graphics.BitmapFactory
 import android.graphics.Matrix
 import android.os.Handler
 import android.os.Looper
+import android.util.Size
 import android.util.Log
 import android.view.Surface
 import android.widget.FrameLayout
 import androidx.camera.core.*
+import androidx.camera.core.resolutionselector.ResolutionSelector
+import androidx.camera.core.resolutionselector.ResolutionStrategy
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.core.app.ActivityCompat
@@ -38,6 +41,9 @@ class YOLOMultiTaskAndroidView(context: Context) : FrameLayout(context) {
         private val CLASS_NAMES = listOf("Móp/bẹp", "Vỡ/nứt", "Thủng/rách", "Trầy/xước")
         private const val REQUEST_CODE_PERMISSIONS = 1001
         private val REQUIRED_PERMISSIONS = arrayOf(Manifest.permission.CAMERA)
+        private val STREAM_ANALYSIS_SIZE = Size(1280, 720)
+        private val CAPTURE_TARGET_SIZE = Size(2560, 1440)
+        private const val TARGET_CAPTURE_LONG_EDGE = 2560
     }
 
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -284,7 +290,8 @@ class YOLOMultiTaskAndroidView(context: Context) : FrameLayout(context) {
                             bmp?.recycle()
                         }.toByteArray()
                     }
-                    callback(normalizeJpeg(jpeg, rotationDegrees))
+                    val normalized = normalizeJpeg(jpeg, rotationDegrees)
+                    callback(resizeJpegToLongEdge(normalized, TARGET_CAPTURE_LONG_EDGE))
                 } catch (e: Exception) {
                     Log.e(TAG, "capturePhoto processing failed: ${e.message}")
                     callback(null)
@@ -320,16 +327,34 @@ class YOLOMultiTaskAndroidView(context: Context) : FrameLayout(context) {
 
             val analysis = ImageAnalysis.Builder()
                 .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                .setTargetAspectRatio(AspectRatio.RATIO_16_9)
                 .setTargetRotation(Surface.ROTATION_0)
                 .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_RGBA_8888)
+                .setResolutionSelector(
+                    ResolutionSelector.Builder()
+                        .setResolutionStrategy(
+                            ResolutionStrategy(
+                                STREAM_ANALYSIS_SIZE,
+                                ResolutionStrategy.FALLBACK_RULE_CLOSEST_HIGHER_THEN_LOWER,
+                            )
+                        )
+                        .build()
+                )
                 .build()
                 .also { it.setAnalyzer(cameraExecutor) { proxy -> onFrame(proxy) } }
 
             val capture = ImageCapture.Builder()
                 .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
-                .setTargetAspectRatio(AspectRatio.RATIO_16_9)
                 .setTargetRotation(Surface.ROTATION_90)
+                .setResolutionSelector(
+                    ResolutionSelector.Builder()
+                        .setResolutionStrategy(
+                            ResolutionStrategy(
+                                CAPTURE_TARGET_SIZE,
+                                ResolutionStrategy.FALLBACK_RULE_CLOSEST_HIGHER_THEN_LOWER,
+                            )
+                        )
+                        .build()
+                )
                 .build()
 
             provider.unbindAll()
@@ -523,6 +548,29 @@ class YOLOMultiTaskAndroidView(context: Context) : FrameLayout(context) {
         return ByteArrayOutputStream().also { out ->
             rotated.compress(Bitmap.CompressFormat.JPEG, 92, out)
             rotated.recycle()
+        }.toByteArray()
+    }
+
+    private fun resizeJpegToLongEdge(bytes: ByteArray, targetLongEdge: Int): ByteArray {
+        val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return bytes
+        val width = bmp.width
+        val height = bmp.height
+        val longEdge = maxOf(width, height)
+
+        if (longEdge <= 0 || longEdge == targetLongEdge) {
+            bmp.recycle()
+            return bytes
+        }
+
+        val scale = targetLongEdge.toFloat() / longEdge.toFloat()
+        val outW = (width * scale).toInt().coerceAtLeast(1)
+        val outH = (height * scale).toInt().coerceAtLeast(1)
+        val resized = Bitmap.createScaledBitmap(bmp, outW, outH, true)
+        bmp.recycle()
+
+        return ByteArrayOutputStream().also { out ->
+            resized.compress(Bitmap.CompressFormat.JPEG, 92, out)
+            resized.recycle()
         }.toByteArray()
     }
 
