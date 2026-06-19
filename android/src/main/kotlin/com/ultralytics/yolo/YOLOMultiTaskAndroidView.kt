@@ -12,9 +12,12 @@ import android.graphics.Matrix
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import android.util.Size
 import android.view.Surface
 import android.widget.FrameLayout
 import androidx.camera.core.*
+import androidx.camera.core.resolutionselector.ResolutionSelector
+import androidx.camera.core.resolutionselector.ResolutionStrategy
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.core.app.ActivityCompat
@@ -310,9 +313,24 @@ class YOLOMultiTaskAndroidView(context: Context) : FrameLayout(context) {
                 .setTargetAspectRatio(AspectRatio.RATIO_16_9)
                 .build()
 
+            // Stream to the models at HD (1280x720) for efficient inference, while still
+            // capturing FullHD (1920x1080) stills. CameraX lets each use-case request its
+            // own resolution from the camera ISP. Sizes are expressed in the sensor's
+            // natural (landscape) orientation.
+            val hdSelector = ResolutionSelector.Builder()
+                .setResolutionStrategy(
+                    ResolutionStrategy(Size(1280, 720), ResolutionStrategy.FALLBACK_RULE_CLOSEST_HIGHER_THEN_LOWER)
+                )
+                .build()
+            val fullHdSelector = ResolutionSelector.Builder()
+                .setResolutionStrategy(
+                    ResolutionStrategy(Size(1920, 1080), ResolutionStrategy.FALLBACK_RULE_CLOSEST_HIGHER_THEN_LOWER)
+                )
+                .build()
+
             val analysis = ImageAnalysis.Builder()
                 .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                .setTargetAspectRatio(AspectRatio.RATIO_16_9)
+                .setResolutionSelector(hdSelector)
                 .setTargetRotation(Surface.ROTATION_0)
                 .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_RGBA_8888)
                 .build()
@@ -320,7 +338,7 @@ class YOLOMultiTaskAndroidView(context: Context) : FrameLayout(context) {
 
             val capture = ImageCapture.Builder()
                 .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
-                .setTargetAspectRatio(AspectRatio.RATIO_16_9)
+                .setResolutionSelector(fullHdSelector)
                 .setTargetRotation(Surface.ROTATION_90)
                 .build()
 

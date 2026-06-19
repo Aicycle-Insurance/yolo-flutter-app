@@ -395,7 +395,11 @@ public class YOLOMultiTaskView: UIView {
 
   private func setupCamera(position: AVCaptureDevice.Position) {
     captureSession.beginConfiguration()
-    captureSession.sessionPreset = .hd1280x720
+    // A single AVCaptureSession has one active format shared by the video-data output
+    // (model stream) and the photo output. Use FullHD so still captures are 1920x1080;
+    // each predictor resizes incoming frames to its own network input internally, so the
+    // live stream effectively runs at the model's input resolution regardless of preset.
+    captureSession.sessionPreset = .hd1920x1080
 
     guard let device = bestCaptureDevice(position: position),
       let input = try? AVCaptureDeviceInput(device: device),
