@@ -1,3 +1,7 @@
+## 1.0.4
+- Add cropping functionality to photo capture for improved user experience
+- Update camera resolution settings for improved image quality in YOLO multi-task implementation
+
 ## 1.0.3
 - Enhance multi-task YOLO implementation with support for a second detection model and improved result routing by model ID
 - Support both Cocoapod and SPM 
