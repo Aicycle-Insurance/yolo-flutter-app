@@ -2,7 +2,7 @@
 
 name: aicycle_yolo
 description: Flutter plugin for AICycle YOLO computer vision models, fork of Ultralytics YOLO.
-version: 1.0.4
+version: 1.0.5
 homepage: https://github.com/Aicycle-Insurance/yolo-flutter-app
 repository: https://github.com/Aicycle-Insurance/yolo-flutter-app
 issue_tracker: https://github.com/Aicycle-Insurance/yolo-flutter-app/issues
