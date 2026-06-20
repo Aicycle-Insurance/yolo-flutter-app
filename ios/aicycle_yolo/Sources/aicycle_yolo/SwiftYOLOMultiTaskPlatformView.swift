@@ -133,6 +133,13 @@ public final class SwiftYOLOMultiTaskPlatformView: NSObject,
         }
         let active = self.multiTaskView?.setTorchMode(enable) ?? false
         result(active)
+      case "setActiveModels":
+        let args = call.arguments as? [String: Any]
+        self.multiTaskView?.setActiveModels(
+          detect: args?["detect"] as? Bool,
+          classify: args?["classify"] as? Bool,
+          secondDetect: args?["secondDetect"] as? Bool)
+        result(nil)
       default:
         result(FlutterMethodNotImplemented)
       }

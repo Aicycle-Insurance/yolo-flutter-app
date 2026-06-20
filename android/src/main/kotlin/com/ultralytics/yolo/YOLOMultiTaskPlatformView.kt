@@ -77,6 +77,15 @@ class YOLOMultiTaskPlatformView(
                             ?: run { result.error("bad_args", "enable (bool) is required", null); return@setMethodCallHandler }
                         result.success(multiTaskView.setTorchMode(enable))
                     }
+                    "setActiveModels" -> {
+                        val args = call.arguments as? Map<*, *>
+                        multiTaskView.setActiveModels(
+                            args?.get("detect") as? Boolean,
+                            args?.get("classify") as? Boolean,
+                            args?.get("secondDetect") as? Boolean,
+                        )
+                        result.success(null)
+                    }
                     else -> result.notImplemented()
                 }
             }

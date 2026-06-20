@@ -68,6 +68,12 @@ class YOLOMultiTaskAndroidView(context: Context) : FrameLayout(context) {
     private val classifyBusy = AtomicBoolean(false)
     private val thirdBusy    = AtomicBoolean(false)
 
+    // Per-predictor inference gates. Predictors stay loaded; toggling these only
+    // skips per-frame dispatch, so re-enabling is instant (no reload).
+    private val detectEnabled   = AtomicBoolean(true)
+    private val classifyEnabled = AtomicBoolean(true)
+    private val thirdEnabled    = AtomicBoolean(true)
+
     private var lifecycleOwner: LifecycleOwner? = null
     private var imageCaptureUseCase: ImageCapture? = null
     private var cameraProvider: ProcessCameraProvider? = null
@@ -263,6 +269,14 @@ class YOLOMultiTaskAndroidView(context: Context) : FrameLayout(context) {
         return enable
     }
 
+    /** Enable/disable per-model inference at runtime. Predictors stay loaded, so
+     *  toggling is instant (no reload). Pass null to leave a model unchanged. */
+    fun setActiveModels(detect: Boolean?, classify: Boolean?, secondDetect: Boolean?) {
+        detect?.let { detectEnabled.set(it) }
+        classify?.let { classifyEnabled.set(it) }
+        secondDetect?.let { thirdEnabled.set(it) }
+    }
+
     fun capturePhoto(crop: android.graphics.RectF? = null, callback: (ByteArray?) -> Unit) {
         val ic = imageCaptureUseCase ?: run { callback(null); return }
         // Snapshot preview size on the main thread for the aspect-fill crop mapping.
@@ -397,6 +411,7 @@ class YOLOMultiTaskAndroidView(context: Context) : FrameLayout(context) {
 
     private fun dispatchDetect(src: Bitmap, w: Int, h: Int, camFpsNow: Double) {
         val p = detectPredictor ?: return
+        if (!detectEnabled.get()) return
         if (!detectBusy.compareAndSet(false, true)) return
         val copy = src.copy(Bitmap.Config.ARGB_8888, false)
         detectExecutor.execute {
@@ -415,6 +430,7 @@ class YOLOMultiTaskAndroidView(context: Context) : FrameLayout(context) {
 
     private fun dispatchClassify(src: Bitmap, w: Int, h: Int, camFpsNow: Double) {
         val p = classifyPredictor ?: return
+        if (!classifyEnabled.get()) return
         if (!classifyBusy.compareAndSet(false, true)) return
         val copy = src.copy(Bitmap.Config.ARGB_8888, false)
         classifyExecutor.execute {
@@ -433,6 +449,7 @@ class YOLOMultiTaskAndroidView(context: Context) : FrameLayout(context) {
 
     private fun dispatchThird(src: Bitmap, w: Int, h: Int, camFpsNow: Double) {
         val p = thirdPredictor ?: return
+        if (!thirdEnabled.get()) return
         if (!thirdBusy.compareAndSet(false, true)) return
         val copy = src.copy(Bitmap.Config.ARGB_8888, false)
         thirdExecutor.execute {

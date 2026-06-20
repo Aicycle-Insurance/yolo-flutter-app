@@ -82,6 +82,25 @@ class MultiTaskYOLOController {
 
   Future<bool> toggleTorch() => setTorch(!_torchEnabled);
 
+  /// Enable/disable individual models' per-frame inference at runtime. All
+  /// predictors stay loaded in memory, so toggling is instant with no reload —
+  /// use it to cut inference load by running only the models a given phase
+  /// needs. [detect] = primary detect, [classify] = classify model,
+  /// [secondDetect] = the second detect model. Pass null to leave unchanged.
+  Future<void> setActiveModels({
+    bool? detect,
+    bool? classify,
+    bool? secondDetect,
+  }) async {
+    final ch = _channel;
+    if (ch == null) return;
+    await ch.invokeMethod<void>('setActiveModels', {
+      if (detect != null) 'detect': detect,
+      if (classify != null) 'classify': classify,
+      if (secondDetect != null) 'secondDetect': secondDetect,
+    });
+  }
+
   /// Stops the camera and releases all CoreML model predictors from memory.
   /// Call this before removing [MultiTaskYOLOView] from the tree so GPU/ANE
   /// memory is freed immediately rather than waiting for a potentially-delayed deinit.

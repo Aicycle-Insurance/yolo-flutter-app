@@ -85,6 +85,13 @@ public class YOLOMultiTaskView: UIView {
   var classifyBusy = false
   var thirdBusy    = false
 
+  /// Per-predictor inference gates. Predictors stay loaded in memory; toggling
+  /// these only skips per-frame dispatch, so re-enabling has no reload cost.
+  /// Accessed on cameraQueue.
+  var detectEnabled   = true
+  var classifyEnabled = true
+  var thirdEnabled    = true
+
   private lazy var detectAdapter   = MultiTaskPredictorAdapter(taskName: "detect",   cameraQueue: cameraQueue)
   private lazy var classifyAdapter = MultiTaskPredictorAdapter(taskName: "classify", cameraQueue: cameraQueue)
   private lazy var thirdAdapter    = MultiTaskPredictorAdapter(taskName: "third",    cameraQueue: cameraQueue)
@@ -465,6 +472,17 @@ public class YOLOMultiTaskView: UIView {
     }
   }
 
+  /// Enable/disable per-model inference at runtime. Predictors are kept loaded,
+  /// so toggling is instant (no reload). Pass nil to leave a model unchanged.
+  public func setActiveModels(detect: Bool?, classify: Bool?, secondDetect: Bool?) {
+    cameraQueue.async { [weak self] in
+      guard let self else { return }
+      if let detect { self.detectEnabled = detect }
+      if let classify { self.classifyEnabled = classify }
+      if let secondDetect { self.thirdEnabled = secondDetect }
+    }
+  }
+
   @discardableResult
   public func setTorchMode(_ enabled: Bool) -> Bool {
     guard let device = captureDevice, device.hasTorch else { return false }
@@ -535,21 +553,22 @@ extension YOLOMultiTaskView: AVCaptureVideoDataOutputSampleBufferDelegate, @unch
     }
 
     // Dispatch each predictor to its own queue so all run concurrently.
-    if let p = detectPredictor, !detectBusy, !p.isUpdating {
+    // Disabled predictors stay loaded but skip dispatch to cut inference load.
+    if let p = detectPredictor, detectEnabled, !detectBusy, !p.isUpdating {
       detectBusy = true
       p.isUpdating = true
       let buf = sampleBuffer
       let adapter = detectAdapter
       detectQueue.async { p.predict(sampleBuffer: buf, onResultsListener: adapter, onInferenceTime: adapter) }
     }
-    if let p = classifyPredictor, !classifyBusy, !p.isUpdating {
+    if let p = classifyPredictor, classifyEnabled, !classifyBusy, !p.isUpdating {
       classifyBusy = true
       p.isUpdating = true
       let buf = sampleBuffer
       let adapter = classifyAdapter
       classifyQueue.async { p.predict(sampleBuffer: buf, onResultsListener: adapter, onInferenceTime: adapter) }
     }
-    if let p = thirdPredictor, !thirdBusy, !p.isUpdating {
+    if let p = thirdPredictor, thirdEnabled, !thirdBusy, !p.isUpdating {
       thirdBusy = true
       p.isUpdating = true
       let buf = sampleBuffer
