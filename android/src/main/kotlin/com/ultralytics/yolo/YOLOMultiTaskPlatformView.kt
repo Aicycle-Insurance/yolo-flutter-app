@@ -50,11 +50,22 @@ class YOLOMultiTaskPlatformView(
         methodChannel.setMethodCallHandler { call, result ->
                 when (call.method) {
                     "stop" -> {
-                        multiTaskView.stopCamera()
+                        // Mirror iOS: fully release camera, executors and predictors — not just
+                        // pause the camera — so GPU/native model memory is freed immediately.
+                        multiTaskView.release()
                         result.success(null)
                     }
                     "capturePhoto" -> {
-                        multiTaskView.capturePhoto { bytes ->
+                        val args = call.arguments as? Map<*, *>
+                        val crop = if (args != null) {
+                            val l = (args["cropLeft"] as? Number)?.toFloat()
+                            val t = (args["cropTop"] as? Number)?.toFloat()
+                            val r = (args["cropRight"] as? Number)?.toFloat()
+                            val b = (args["cropBottom"] as? Number)?.toFloat()
+                            if (l != null && t != null && r != null && b != null)
+                                android.graphics.RectF(l, t, r, b) else null
+                        } else null
+                        multiTaskView.capturePhoto(crop) { bytes ->
                             mainHandler.post {
                                 if (bytes != null) result.success(bytes)
                                 else result.error("capture_failed", "Failed to capture photo", null)

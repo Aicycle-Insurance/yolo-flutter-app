@@ -54,6 +54,12 @@ public class YOLOMultiTaskView: UIView {
   private var previewLayer: AVCaptureVideoPreviewLayer?
   private let photoOutput = AVCapturePhotoOutput()
   private var photoCaptureCompletion: ((Data?) -> Void)?
+  /// Visible viewport (normalized [0,1] rect in preview space) to crop the next
+  /// still to; nil = keep the full frame.
+  private var pendingCrop: CGRect?
+  /// Preview view size (points) snapshotted when capture is requested — used to
+  /// map the normalized crop into photo pixels under aspect-fill.
+  private var pendingPreviewSize: CGSize = .zero
   private var captureDevice: AVCaptureDevice?
 
   /// Serial queue for camera delegate callbacks and busy-flag mutations only.
@@ -445,8 +451,12 @@ public class YOLOMultiTaskView: UIView {
     camFpsWindowStart = CACurrentMediaTime()
   }
 
-  public func capturePhoto(completion: @escaping (Data?) -> Void) {
+  public func capturePhoto(crop: CGRect? = nil, completion: @escaping (Data?) -> Void) {
     photoCaptureCompletion = completion
+    pendingCrop = crop
+    // Read the preview bounds on the main thread (this is called from the
+    // MethodChannel handler, i.e. main); the delegate may run off-main.
+    pendingPreviewSize = bounds.size
     let settings = AVCapturePhotoSettings()
     settings.flashMode = .off
     cameraQueue.async { [weak self] in
@@ -559,18 +569,78 @@ extension YOLOMultiTaskView: AVCapturePhotoCaptureDelegate {
   ) {
     let completion = photoCaptureCompletion
     photoCaptureCompletion = nil
+    let crop = pendingCrop
+    let previewSize = pendingPreviewSize
+    pendingCrop = nil
     guard error == nil, let data = photo.fileDataRepresentation() else {
       completion?(nil)
       return
     }
-    guard let src = UIImage(data: data), src.imageOrientation != .up else {
+    // No crop requested → keep the original bytes (only normalize orientation).
+    guard let src = UIImage(data: data) else {
       completion?(data)
       return
     }
-    let renderer = UIGraphicsImageRenderer(size: src.size)
-    let normalized = renderer.jpegData(withCompressionQuality: 0.92) { _ in
-      src.draw(in: CGRect(origin: .zero, size: src.size))
+    if crop == nil, src.imageOrientation == .up {
+      completion?(data)
+      return
     }
-    completion?(normalized)
+
+    // Bake orientation so the CGImage is upright (top-left origin) before cropping.
+    let upright: UIImage
+    if src.imageOrientation == .up {
+      upright = src
+    } else {
+      let renderer = UIGraphicsImageRenderer(size: src.size)
+      upright = renderer.image { _ in
+        src.draw(in: CGRect(origin: .zero, size: src.size))
+      }
+    }
+
+    guard let crop, previewSize.width > 0, previewSize.height > 0,
+      let cg = upright.cgImage
+    else {
+      completion?(upright.jpegData(compressionQuality: 0.92))
+      return
+    }
+
+    // Map the normalized preview rect into photo pixels under aspect-fill (cover).
+    let wp = CGFloat(cg.width), hp = CGFloat(cg.height)
+    let wv = previewSize.width, hv = previewSize.height
+    let rect: CGRect
+    if (wp >= hp) != (wv >= hv) {
+      // Preview is portrait but the still is landscape (photo connection is
+      // .landscapeRight = the preview rotated 90° clockwise). The preview's
+      // vertical axis (where the top/bottom bars live) maps to the photo's
+      // horizontal axis, so the crop must be transposed.
+      let s = max(wv / hp, hv / wp)
+      let offU = (hp * s - wv) / 2  // overflow along preview width  → photo height
+      let offV = (wp * s - hv) / 2  // overflow along preview height → photo width
+      let u0 = (crop.minX * wv + offU) / s
+      let u1 = (crop.maxX * wv + offU) / s
+      let v0 = (crop.minY * hv + offV) / s
+      let v1 = (crop.maxY * hv + offV) / s
+      let x = max(0, v0), y = max(0, hp - u1)
+      rect = CGRect(
+        x: x, y: y,
+        width: min(wp, v1) - x,
+        height: min(hp, hp - u0) - y)
+    } else {
+      let scale = max(wv / wp, hv / hp)
+      let offX = (wp * scale - wv) / 2
+      let offY = (hp * scale - hv) / 2
+      let x = max(0, (crop.minX * wv + offX) / scale)
+      let y = max(0, (crop.minY * hv + offY) / scale)
+      rect = CGRect(
+        x: x, y: y,
+        width: min(wp, (crop.maxX * wv + offX) / scale) - x,
+        height: min(hp, (crop.maxY * hv + offY) / scale) - y)
+    }
+
+    guard rect.width > 0, rect.height > 0, let cropped = cg.cropping(to: rect) else {
+      completion?(upright.jpegData(compressionQuality: 0.92))
+      return
+    }
+    completion?(UIImage(cgImage: cropped).jpegData(compressionQuality: 0.92))
   }
 }

@@ -263,8 +263,11 @@ class YOLOMultiTaskAndroidView(context: Context) : FrameLayout(context) {
         return enable
     }
 
-    fun capturePhoto(callback: (ByteArray?) -> Unit) {
+    fun capturePhoto(crop: android.graphics.RectF? = null, callback: (ByteArray?) -> Unit) {
         val ic = imageCaptureUseCase ?: run { callback(null); return }
+        // Snapshot preview size on the main thread for the aspect-fill crop mapping.
+        val previewW = previewView.width
+        val previewH = previewView.height
         ic.takePicture(ContextCompat.getMainExecutor(context), object : ImageCapture.OnImageCapturedCallback() {
             override fun onCaptureSuccess(image: ImageProxy) {
                 try {
@@ -279,7 +282,7 @@ class YOLOMultiTaskAndroidView(context: Context) : FrameLayout(context) {
                             bmp?.recycle()
                         }.toByteArray()
                     }
-                    callback(normalizeJpeg(jpeg, rotationDegrees))
+                    callback(processCaptured(jpeg, rotationDegrees, crop, previewW, previewH))
                 } catch (e: Exception) {
                     Log.e(TAG, "capturePhoto processing failed: ${e.message}")
                     callback(null)
@@ -524,16 +527,76 @@ class YOLOMultiTaskAndroidView(context: Context) : FrameLayout(context) {
     // region Photo normalization
 
     /** Rotate JPEG bytes so pixel data is upright. Flutter's Image.memory() ignores EXIF. */
-    private fun normalizeJpeg(bytes: ByteArray, rotationDegrees: Int): ByteArray {
-        if (rotationDegrees == 0) return bytes
-        val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return bytes
-        val matrix = Matrix().apply { postRotate(rotationDegrees.toFloat()) }
-        val rotated = Bitmap.createBitmap(bmp, 0, 0, bmp.width, bmp.height, matrix, true)
-        bmp.recycle()
+    /// Bakes the capture rotation upright and, when [crop] is given, crops the
+    /// still to the visible viewport (normalized [0,1] rect in preview space)
+    /// under aspect-fill — so the saved photo matches what the user saw.
+    private fun processCaptured(
+        bytes: ByteArray,
+        rotationDegrees: Int,
+        crop: android.graphics.RectF?,
+        previewW: Int,
+        previewH: Int,
+    ): ByteArray {
+        if (rotationDegrees == 0 && crop == null) return bytes
+        var bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return bytes
+        if (rotationDegrees != 0) {
+            val matrix = Matrix().apply { postRotate(rotationDegrees.toFloat()) }
+            val rotated = Bitmap.createBitmap(bmp, 0, 0, bmp.width, bmp.height, matrix, true)
+            if (rotated !== bmp) { bmp.recycle(); bmp = rotated }
+        }
+        if (crop != null && previewW > 0 && previewH > 0) {
+            val cropped = cropToViewport(bmp, crop, previewW, previewH)
+            if (cropped !== bmp) { bmp.recycle(); bmp = cropped }
+        }
         return ByteArrayOutputStream().also { out ->
-            rotated.compress(Bitmap.CompressFormat.JPEG, 92, out)
-            rotated.recycle()
+            bmp.compress(Bitmap.CompressFormat.JPEG, 92, out)
+            bmp.recycle()
         }.toByteArray()
+    }
+
+    private fun cropToViewport(
+        bmp: Bitmap,
+        crop: android.graphics.RectF,
+        previewW: Int,
+        previewH: Int,
+    ): Bitmap {
+        val wp = bmp.width.toFloat()
+        val hp = bmp.height.toFloat()
+        val wv = previewW.toFloat()
+        val hv = previewH.toFloat()
+
+        val left: Float; val top: Float; val right: Float; val bottom: Float
+        if ((wp >= hp) != (wv >= hv)) {
+            // Preview is portrait but the still is landscape (ImageCapture targets
+            // ROTATION_90 = the preview rotated 90° clockwise). The preview's
+            // vertical axis (top/bottom bars) maps to the photo's horizontal axis,
+            // so the crop must be transposed.
+            val s = maxOf(wv / hp, hv / wp)
+            val offU = (hp * s - wv) / 2f  // preview-width overflow  → photo height
+            val offV = (wp * s - hv) / 2f  // preview-height overflow → photo width
+            val u0 = (crop.left * wv + offU) / s
+            val u1 = (crop.right * wv + offU) / s
+            val v0 = (crop.top * hv + offV) / s
+            val v1 = (crop.bottom * hv + offV) / s
+            left = v0
+            right = v1
+            top = hp - u1
+            bottom = hp - u0
+        } else {
+            val s = maxOf(wv / wp, hv / hp)
+            val offX = (wp * s - wv) / 2f
+            val offY = (hp * s - hv) / 2f
+            left = (crop.left * wv + offX) / s
+            top = (crop.top * hv + offY) / s
+            right = (crop.right * wv + offX) / s
+            bottom = (crop.bottom * hv + offY) / s
+        }
+
+        val x = left.coerceIn(0f, wp).toInt()
+        val y = top.coerceIn(0f, hp).toInt()
+        val w = (right.coerceIn(0f, wp).toInt() - x).coerceIn(1, bmp.width - x)
+        val h = (bottom.coerceIn(0f, hp).toInt() - y).coerceIn(1, bmp.height - y)
+        return Bitmap.createBitmap(bmp, x, y, w, h)
     }
 
     // endregion

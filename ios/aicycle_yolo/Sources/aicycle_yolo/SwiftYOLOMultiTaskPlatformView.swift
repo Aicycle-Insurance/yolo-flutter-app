@@ -106,7 +106,16 @@ public final class SwiftYOLOMultiTaskPlatformView: NSObject,
           result(FlutterError(code: "unavailable", message: "Camera not ready", details: nil))
           return
         }
-        view.capturePhoto { data in
+        var crop: CGRect? = nil
+        if let args = call.arguments as? [String: Any],
+          let l = args["cropLeft"] as? Double,
+          let t = args["cropTop"] as? Double,
+          let r = args["cropRight"] as? Double,
+          let b = args["cropBottom"] as? Double
+        {
+          crop = CGRect(x: l, y: t, width: r - l, height: b - t)
+        }
+        view.capturePhoto(crop: crop) { data in
           DispatchQueue.main.async {
             if let data {
               result(FlutterStandardTypedData(bytes: data))

@@ -38,10 +38,33 @@ class MultiTaskYOLOController {
 
   /// Capture a JPEG still from the current camera frame.
   /// Returns the JPEG bytes, or throws if the camera is not ready.
-  Future<Uint8List> capturePhoto() async {
+  ///
+  /// The preview is rendered aspect-fill (cover) inside the platform view, while
+  /// the still capture comes from the full camera frame — so by default the
+  /// saved photo contains more than what is visible on screen. Pass the visible
+  /// viewport (normalized [0,1] rect in *preview* coordinates) to have native
+  /// crop the still to exactly what the user sees. `(0,0,1,1)` = no crop.
+  Future<Uint8List> capturePhoto({
+    double cropLeft = 0,
+    double cropTop = 0,
+    double cropRight = 1,
+    double cropBottom = 1,
+  }) async {
     final ch = _channel;
     if (ch == null) throw StateError('MultiTaskYOLOView is not attached');
-    final result = await ch.invokeMethod<Uint8List>('capturePhoto');
+    final bool fullFrame =
+        cropLeft <= 0 && cropTop <= 0 && cropRight >= 1 && cropBottom >= 1;
+    final result = await ch.invokeMethod<Uint8List>(
+      'capturePhoto',
+      fullFrame
+          ? null
+          : {
+              'cropLeft': cropLeft,
+              'cropTop': cropTop,
+              'cropRight': cropRight,
+              'cropBottom': cropBottom,
+            },
+    );
     if (result == null) throw StateError('capturePhoto returned null');
     return result;
   }
